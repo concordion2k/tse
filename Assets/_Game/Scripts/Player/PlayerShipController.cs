@@ -7,6 +7,7 @@ public class PlayerShipController : MonoBehaviour
 {
     private PlayerShipMovement movement;
     private PlayerWeaponSystem weaponSystem;
+    private PlayerBoostSystem boostSystem;
     private PlayerInput playerInput;
 
     void Awake()
@@ -14,6 +15,7 @@ public class PlayerShipController : MonoBehaviour
         // Get required components
         movement = GetComponent<PlayerShipMovement>();
         weaponSystem = GetComponent<PlayerWeaponSystem>();
+        boostSystem = GetComponent<PlayerBoostSystem>();
         playerInput = GetComponent<PlayerInput>();
 
         if (movement == null)
@@ -46,6 +48,22 @@ public class PlayerShipController : MonoBehaviour
                 attackAction.performed += OnAttack;
                 attackAction.canceled += OnAttack;
             }
+
+            // Subscribe to Sprint (Boost) action
+            var sprintAction = playerInput.actions["Sprint"];
+            if (sprintAction != null)
+            {
+                sprintAction.performed += OnBoost;
+                sprintAction.canceled += OnBoost;
+            }
+
+            // Subscribe to Crouch (Brake) action
+            var crouchAction = playerInput.actions["Crouch"];
+            if (crouchAction != null)
+            {
+                crouchAction.performed += OnBrake;
+                crouchAction.canceled += OnBrake;
+            }
         }
     }
 
@@ -68,6 +86,22 @@ public class PlayerShipController : MonoBehaviour
                 attackAction.performed -= OnAttack;
                 attackAction.canceled -= OnAttack;
             }
+
+            // Unsubscribe from Sprint action
+            var sprintAction = playerInput.actions["Sprint"];
+            if (sprintAction != null)
+            {
+                sprintAction.performed -= OnBoost;
+                sprintAction.canceled -= OnBoost;
+            }
+
+            // Unsubscribe from Crouch action
+            var crouchAction = playerInput.actions["Crouch"];
+            if (crouchAction != null)
+            {
+                crouchAction.performed -= OnBrake;
+                crouchAction.canceled -= OnBrake;
+            }
         }
     }
 
@@ -87,5 +121,27 @@ public class PlayerShipController : MonoBehaviour
             bool isPressed = context.ReadValueAsButton();
             weaponSystem.HandleFireInput(isPressed);
         }
+    }
+
+    void OnBoost(InputAction.CallbackContext context)
+    {
+        if (boostSystem == null)
+            return;
+
+        if (context.performed)
+            boostSystem.StartBoost();
+        else if (context.canceled)
+            boostSystem.StopBoost();
+    }
+
+    void OnBrake(InputAction.CallbackContext context)
+    {
+        if (boostSystem == null)
+            return;
+
+        if (context.performed)
+            boostSystem.StartBrake();
+        else if (context.canceled)
+            boostSystem.StopBrake();
     }
 }

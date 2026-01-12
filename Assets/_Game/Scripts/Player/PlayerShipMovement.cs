@@ -148,20 +148,9 @@ public class PlayerShipMovement : MonoBehaviour
         // Calculate target position: center path + lateral offset
         Vector3 targetPosition = centerPath + lateralOffset;
 
-        // Smooth movement to target position
-        if (movementSmoothing > 0f)
-        {
-            transform.position = Vector3.SmoothDamp(
-                transform.position,
-                targetPosition,
-                ref smoothVelocity,
-                movementSmoothing
-            );
-        }
-        else
-        {
-            transform.position = targetPosition;
-        }
+        // Directly set position to avoid lag during speed changes
+        // Lateral movement already has smoothing from velocity interpolation
+        transform.position = targetPosition;
 
         // Update ship rotation based on movement
         if (enableRotation)
