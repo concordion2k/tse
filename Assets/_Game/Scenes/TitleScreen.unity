@@ -1137,8 +1137,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: d48400fb41076473595761c130af5b34, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::AudioManager
-  menuMusic: {fileID: 0}
-  gameplayMusic: {fileID: 0}
+  menuMusic: {fileID: 8300000, guid: 849a3701cf2f648118dbcb43ecd5fe2f, type: 3}
+  gameplayMusic: {fileID: 8300000, guid: 7ee397be01a88469cbb924fc484251eb, type: 3}
   musicVolume: 0.5
 --- !u!1 &1271347940
 GameObject:
