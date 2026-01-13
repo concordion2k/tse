@@ -27,6 +27,9 @@ public class PlayerShipController : MonoBehaviour
         {
             Debug.LogError("PlayerShipController requires PlayerInput component!");
         }
+
+        // Debug: Check Y-axis invert setting
+        Debug.Log($"PlayerShipController started. InvertYAxis setting: {GameSettings.InvertYAxis}");
     }
 
     void OnEnable()
@@ -110,6 +113,14 @@ public class PlayerShipController : MonoBehaviour
         if (movement != null)
         {
             Vector2 input = context.ReadValue<Vector2>();
+
+            // Apply Y-axis inversion if setting is enabled
+            if (GameSettings.InvertYAxis)
+            {
+                Debug.Log($"Inverting Y-axis: {input.y} -> {-input.y}");
+                input.y *= -1f;
+            }
+
             movement.SetMovementInput(input);
         }
     }
