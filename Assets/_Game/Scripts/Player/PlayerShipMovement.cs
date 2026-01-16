@@ -10,10 +10,10 @@ public class PlayerShipMovement : MonoBehaviour
     public float maxLateralSpeed = 10f;
 
     [Tooltip("Time to reach maximum speed from zero (seconds)")]
-    public float accelerationTime = 0.5f;
+    public float accelerationTime = 0.25f;
 
     [Tooltip("Time to come to a complete stop from maximum speed (seconds)")]
-    public float decelerationTime = 0.5f;
+    public float decelerationTime = 0.4f;
 
     [Header("Movement Bounds")]
     [Tooltip("Use camera viewport to calculate bounds automatically")]
@@ -36,14 +36,18 @@ public class PlayerShipMovement : MonoBehaviour
 
     [Tooltip("Maximum tilt angle when moving horizontally (degrees, bank/roll)")]
     [Range(0f, 90f)]
-    public float maxBankAngle = 30f;
+    public float maxBankAngle = 35f;
 
     [Tooltip("Maximum tilt angle when moving vertically (degrees, pitch)")]
     [Range(0f, 45f)]
-    public float maxPitchAngle = 15f;
+    public float maxPitchAngle = 25f;
+
+    [Tooltip("Maximum yaw angle when moving horizontally (degrees, turns ship left/right)")]
+    [Range(0f, 45f)]
+    public float maxYawAngle = 20f;
 
     [Tooltip("How quickly the ship rotates to match movement direction")]
-    public float rotationSpeed = 5f;
+    public float rotationSpeed = 15f;
 
     private Vector2 moveInput;
     private Vector2 currentVelocity = Vector2.zero; // Current lateral velocity
@@ -175,14 +179,11 @@ public class PlayerShipMovement : MonoBehaviour
         // Pitch based on vertical movement (negative for correct direction)
         float targetPitch = -normalizedVelocity.y * maxPitchAngle;
 
-        // Create target rotation (euler angles: pitch, yaw, roll)
-        Quaternion targetRotation = Quaternion.Euler(targetPitch, 0f, targetBank);
+        // Yaw based on horizontal movement (positive = turn right when moving right)
+        float targetYaw = normalizedVelocity.x * maxYawAngle;
 
-        // Debug logging (remove after testing)
-        if (normalizedVelocity.magnitude > 0.1f)
-        {
-            Debug.Log($"Ship Rotation - Velocity: {currentVelocity}, Bank: {targetBank:F1}°, Pitch: {targetPitch:F1}°");
-        }
+        // Create target rotation (euler angles: pitch, yaw, roll)
+        Quaternion targetRotation = Quaternion.Euler(targetPitch, targetYaw, targetBank);
 
         // Smoothly interpolate to target rotation
         if (rotationSpeed > 0f)
