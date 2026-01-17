@@ -3,7 +3,9 @@
     "allow": [
       "Bash(git init:*)",
       "Bash(gh pr create:*)",
-      "Bash(find:*)"
+      "Bash(find:*)",
+      "Bash(gh pr view:*)",
+      "Bash(gh pr edit:*)"
     ]
   }
 }
