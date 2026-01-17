@@ -49,6 +49,10 @@ public class PlayerShipMovement : MonoBehaviour
     [Tooltip("How quickly the ship rotates to match movement direction")]
     public float rotationSpeed = 15f;
 
+    [Header("References")]
+    [Tooltip("Reference to barrel roll system for rotation offset and speed boost")]
+    public PlayerBarrelRollSystem barrelRollSystem;
+
     private Vector2 moveInput;
     private Vector2 currentVelocity = Vector2.zero; // Current lateral velocity
     private Vector3 lateralOffset = Vector3.zero; // Offset from center path
@@ -79,6 +83,12 @@ public class PlayerShipMovement : MonoBehaviour
 
         // Calculate initial bounds
         UpdateMovementBounds();
+
+        // Auto-find barrel roll system if not assigned
+        if (barrelRollSystem == null)
+        {
+            barrelRollSystem = GetComponent<PlayerBarrelRollSystem>();
+        }
     }
 
     void UpdateMovementBounds()
@@ -149,6 +159,23 @@ public class PlayerShipMovement : MonoBehaviour
         // Calculate target velocity based on input
         Vector2 targetVelocity = moveInput * maxLateralSpeed;
 
+        // Apply barrel roll speed boost if active
+        if (barrelRollSystem != null)
+        {
+            float boostedDir = barrelRollSystem.GetBoostedDirection();
+            float speedMultiplier = barrelRollSystem.lateralSpeedBoost;
+
+            // Apply boost only when moving in the boosted direction
+            if (boostedDir < 0 && moveInput.x < 0) // Left roll + moving left
+            {
+                targetVelocity.x *= speedMultiplier;
+            }
+            else if (boostedDir > 0 && moveInput.x > 0) // Right roll + moving right
+            {
+                targetVelocity.x *= speedMultiplier;
+            }
+        }
+
         // Determine if we're accelerating or decelerating
         bool isAccelerating = moveInput.magnitude > 0.01f;
         float transitionTime = isAccelerating ? accelerationTime : decelerationTime;
@@ -197,6 +224,12 @@ public class PlayerShipMovement : MonoBehaviour
         // Calculate target rotation angles
         // Bank (roll) based on horizontal movement (negative for correct direction)
         float targetBank = -normalizedVelocity.x * maxBankAngle;
+
+        // Add barrel roll offset if active
+        if (barrelRollSystem != null)
+        {
+            targetBank += barrelRollSystem.GetRollAngleOffset();
+        }
 
         // Pitch based on vertical movement (negative for correct direction)
         float targetPitch = -normalizedVelocity.y * maxPitchAngle;

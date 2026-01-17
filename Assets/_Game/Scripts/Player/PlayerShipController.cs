@@ -8,6 +8,7 @@ public class PlayerShipController : MonoBehaviour
     private PlayerShipMovement movement;
     private PlayerWeaponSystem weaponSystem;
     private PlayerBoostSystem boostSystem;
+    private PlayerBarrelRollSystem barrelRollSystem;
     private PlayerInput playerInput;
 
     void Awake()
@@ -16,6 +17,7 @@ public class PlayerShipController : MonoBehaviour
         movement = GetComponent<PlayerShipMovement>();
         weaponSystem = GetComponent<PlayerWeaponSystem>();
         boostSystem = GetComponent<PlayerBoostSystem>();
+        barrelRollSystem = GetComponent<PlayerBarrelRollSystem>();
         playerInput = GetComponent<PlayerInput>();
 
         if (movement == null)
@@ -67,6 +69,21 @@ public class PlayerShipController : MonoBehaviour
                 crouchAction.performed += OnBrake;
                 crouchAction.canceled += OnBrake;
             }
+
+            // Subscribe to Barrel Roll actions
+            var barrelRollLeftAction = playerInput.actions["BarrelRollLeft"];
+            if (barrelRollLeftAction != null)
+            {
+                barrelRollLeftAction.performed += OnBarrelRollLeft;
+                barrelRollLeftAction.canceled += OnBarrelRollLeft;
+            }
+
+            var barrelRollRightAction = playerInput.actions["BarrelRollRight"];
+            if (barrelRollRightAction != null)
+            {
+                barrelRollRightAction.performed += OnBarrelRollRight;
+                barrelRollRightAction.canceled += OnBarrelRollRight;
+            }
         }
     }
 
@@ -104,6 +121,21 @@ public class PlayerShipController : MonoBehaviour
             {
                 crouchAction.performed -= OnBrake;
                 crouchAction.canceled -= OnBrake;
+            }
+
+            // Unsubscribe from Barrel Roll actions
+            var barrelRollLeftAction = playerInput.actions["BarrelRollLeft"];
+            if (barrelRollLeftAction != null)
+            {
+                barrelRollLeftAction.performed -= OnBarrelRollLeft;
+                barrelRollLeftAction.canceled -= OnBarrelRollLeft;
+            }
+
+            var barrelRollRightAction = playerInput.actions["BarrelRollRight"];
+            if (barrelRollRightAction != null)
+            {
+                barrelRollRightAction.performed -= OnBarrelRollRight;
+                barrelRollRightAction.canceled -= OnBarrelRollRight;
             }
         }
     }
@@ -154,5 +186,21 @@ public class PlayerShipController : MonoBehaviour
             boostSystem.StartBrake();
         else if (context.canceled)
             boostSystem.StopBrake();
+    }
+
+    void OnBarrelRollLeft(InputAction.CallbackContext context)
+    {
+        if (barrelRollSystem != null)
+        {
+            barrelRollSystem.StartLeftRoll(context.performed);
+        }
+    }
+
+    void OnBarrelRollRight(InputAction.CallbackContext context)
+    {
+        if (barrelRollSystem != null)
+        {
+            barrelRollSystem.StartRightRoll(context.performed);
+        }
     }
 }
