@@ -53,15 +53,18 @@ public class PlayerShipMovement : MonoBehaviour
     private Vector2 currentVelocity = Vector2.zero; // Current lateral velocity
     private Vector3 lateralOffset = Vector3.zero; // Offset from center path
     private Vector3 centerPath; // The center line the ship follows
+    private Vector3 previousCenterPath; // For interpolation between physics frames
     private Vector3 forwardDirection; // Fixed forward direction (doesn't change with ship rotation)
     private Vector3 smoothVelocity = Vector3.zero; // For SmoothDamp
     private Vector3 calculatedBounds;
     private Camera mainCamera;
+    private float fixedUpdateTimer; // Time accumulator for interpolation
 
     void Start()
     {
         // Initialize center path to starting position
         centerPath = transform.position;
+        previousCenterPath = centerPath;
 
         // Store the initial forward direction (world space, won't change with ship rotation)
         forwardDirection = transform.forward;
@@ -108,16 +111,24 @@ public class PlayerShipMovement : MonoBehaviour
     }
 
     // Public accessor for the center path (used by camera)
+    // Returns interpolated position for smooth rendering
     public Vector3 GetCenterPath()
     {
-        return centerPath;
+        float interpolationFactor = Mathf.Clamp01(fixedUpdateTimer / Time.fixedDeltaTime);
+        return Vector3.Lerp(previousCenterPath, centerPath, interpolationFactor);
     }
 
     void FixedUpdate()
     {
+        // Store previous position for interpolation
+        previousCenterPath = centerPath;
+
         // Move the center path forward constantly using fixed direction
         // (not affected by ship rotation to prevent oscillation)
         centerPath += forwardDirection * forwardSpeed * Time.fixedDeltaTime;
+
+        // Reset interpolation timer
+        fixedUpdateTimer = 0f;
     }
 
     void Update()
@@ -127,6 +138,13 @@ public class PlayerShipMovement : MonoBehaviour
         {
             UpdateMovementBounds();
         }
+
+        // Accumulate time for interpolation between fixed updates
+        fixedUpdateTimer += Time.deltaTime;
+
+        // Interpolate center path between physics frames for smooth movement
+        float interpolationFactor = Mathf.Clamp01(fixedUpdateTimer / Time.fixedDeltaTime);
+        Vector3 interpolatedCenterPath = Vector3.Lerp(previousCenterPath, centerPath, interpolationFactor);
 
         // Calculate target velocity based on input
         Vector2 targetVelocity = moveInput * maxLateralSpeed;
@@ -154,11 +172,10 @@ public class PlayerShipMovement : MonoBehaviour
         lateralOffset.y = Mathf.Clamp(lateralOffset.y, -calculatedBounds.y, calculatedBounds.y);
         lateralOffset.z = 0f; // No forward/backward offset
 
-        // Calculate target position: center path + lateral offset
-        Vector3 targetPosition = centerPath + lateralOffset;
+        // Calculate target position using interpolated center path
+        Vector3 targetPosition = interpolatedCenterPath + lateralOffset;
 
-        // Directly set position to avoid lag during speed changes
-        // Lateral movement already has smoothing from velocity interpolation
+        // Set position using interpolated value for smooth movement
         transform.position = targetPosition;
 
         // Update ship rotation based on movement
