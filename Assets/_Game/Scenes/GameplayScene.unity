@@ -6239,7 +6239,7 @@ MonoBehaviour:
   firePoint: {fileID: 1738532279}
   projectilePrefab: {fileID: 0}
   fireRate: 0.15
-  projectileSpeed: 50
+  projectileSpeed: 125
   fireSound: {fileID: 0}
 --- !u!114 &1251178373
 MonoBehaviour:
@@ -6290,8 +6290,8 @@ MonoBehaviour:
   enableRotation: 1
   maxBankAngle: 30
   maxPitchAngle: 15
-  maxYawAngle: 15
-  rotationSpeed: 5
+  maxYawAngle: 34.3
+  rotationSpeed: 20
 --- !u!114 &1251178375
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -6326,9 +6326,9 @@ MonoBehaviour:
   movementSmoothing: 0.1
   enableRotation: 1
   maxBankAngle: 77.9
-  maxPitchAngle: 36.3
-  maxYawAngle: 30.1
-  rotationSpeed: 5
+  maxPitchAngle: 45
+  maxYawAngle: 92.1
+  rotationSpeed: 80
 --- !u!114 &1251178377
 MonoBehaviour:
   m_ObjectHideFlags: 0

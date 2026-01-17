@@ -43,7 +43,7 @@ public class PlayerShipMovement : MonoBehaviour
     public float maxPitchAngle = 25f;
 
     [Tooltip("Maximum yaw angle when moving horizontally (degrees, turns ship left/right)")]
-    [Range(0f, 45f)]
+    [Range(0f, 100f)]
     public float maxYawAngle = 20f;
 
     [Tooltip("How quickly the ship rotates to match movement direction")]
