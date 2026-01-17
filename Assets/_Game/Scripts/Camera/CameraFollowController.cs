@@ -8,10 +8,10 @@ public class CameraFollowController : MonoBehaviour
 
     [Header("Camera Positioning")]
     [Tooltip("Offset from target in local space (relative to target's rotation)")]
-    public Vector3 offset = new Vector3(0f, 4f, -12f);
+    public Vector3 offset = new Vector3(0f, 3f, -8f);
 
     [Tooltip("How far ahead of the target to look")]
-    public float lookAhead = 5f;
+    public float lookAhead = 8f;
 
     [Header("Smoothing")]
     [Tooltip("How quickly the camera follows the target position (higher = faster)")]
