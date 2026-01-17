@@ -53,6 +53,7 @@ public class PlayerShipMovement : MonoBehaviour
     private Vector2 currentVelocity = Vector2.zero; // Current lateral velocity
     private Vector3 lateralOffset = Vector3.zero; // Offset from center path
     private Vector3 centerPath; // The center line the ship follows
+    private Vector3 forwardDirection; // Fixed forward direction (doesn't change with ship rotation)
     private Vector3 smoothVelocity = Vector3.zero; // For SmoothDamp
     private Vector3 calculatedBounds;
     private Camera mainCamera;
@@ -61,6 +62,9 @@ public class PlayerShipMovement : MonoBehaviour
     {
         // Initialize center path to starting position
         centerPath = transform.position;
+
+        // Store the initial forward direction (world space, won't change with ship rotation)
+        forwardDirection = transform.forward;
 
         // Get main camera reference
         mainCamera = Camera.main;
@@ -111,8 +115,9 @@ public class PlayerShipMovement : MonoBehaviour
 
     void FixedUpdate()
     {
-        // Move the center path forward constantly
-        centerPath += transform.forward * forwardSpeed * Time.fixedDeltaTime;
+        // Move the center path forward constantly using fixed direction
+        // (not affected by ship rotation to prevent oscillation)
+        centerPath += forwardDirection * forwardSpeed * Time.fixedDeltaTime;
     }
 
     void Update()
