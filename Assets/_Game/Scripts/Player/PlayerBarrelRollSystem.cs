@@ -62,14 +62,17 @@ public class PlayerBarrelRollSystem : MonoBehaviour
     {
         isHoldingLeft = isPressed;
 
-        if (isPressed && !isRolling && !isHoldingRoll)
+        if (isPressed && !isRolling && !isHoldingRoll && !isReturning)
         {
             StartRoll(RollDirection.Left);
         }
-        else if (!isPressed && isHoldingRoll && currentRollDirection == RollDirection.Left)
+        else if (!isPressed && currentRollDirection == RollDirection.Left)
         {
-            // Button released, reset rotation
-            ReleaseRoll();
+            // Button released - start smooth return
+            if (isRolling || isHoldingRoll)
+            {
+                StartReturn();
+            }
         }
     }
 
@@ -77,14 +80,17 @@ public class PlayerBarrelRollSystem : MonoBehaviour
     {
         isHoldingRight = isPressed;
 
-        if (isPressed && !isRolling && !isHoldingRoll)
+        if (isPressed && !isRolling && !isHoldingRoll && !isReturning)
         {
             StartRoll(RollDirection.Right);
         }
-        else if (!isPressed && isHoldingRoll && currentRollDirection == RollDirection.Right)
+        else if (!isPressed && currentRollDirection == RollDirection.Right)
         {
-            // Button released, reset rotation
-            ReleaseRoll();
+            // Button released - start smooth return
+            if (isRolling || isHoldingRoll)
+            {
+                StartReturn();
+            }
         }
     }
 
@@ -100,6 +106,12 @@ public class PlayerBarrelRollSystem : MonoBehaviour
 
     void Update()
     {
+        if (isReturning)
+        {
+            UpdateReturn();
+            return;
+        }
+
         if (!isRolling) return;
 
         rollTimer += Time.deltaTime;
@@ -119,6 +131,31 @@ public class PlayerBarrelRollSystem : MonoBehaviour
         {
             CompleteRoll();
         }
+    }
+
+    void UpdateReturn()
+    {
+        returnTimer += Time.deltaTime;
+        float normalizedTime = Mathf.Clamp01(returnTimer / rollDuration);
+        float curveValue = rollCurve.Evaluate(normalizedTime);
+
+        // Interpolate from returnStartAngle back to 0
+        currentRollAngle = Mathf.Lerp(returnStartAngle, 0f, curveValue);
+
+        // Check if return completed
+        if (normalizedTime >= 1f)
+        {
+            CompleteReturn();
+        }
+    }
+
+    void CompleteReturn()
+    {
+        isReturning = false;
+        currentRollDirection = RollDirection.None;
+        currentRollAngle = 0f;
+        returnTimer = 0f;
+        rollTimer = 0f;
     }
 
     private void CompleteRoll()
@@ -153,5 +190,15 @@ public class PlayerBarrelRollSystem : MonoBehaviour
         currentRollDirection = RollDirection.None;
         currentRollAngle = 0f;
         rollTimer = 0f;
+    }
+
+    private void StartReturn()
+    {
+        // Capture current angle and start return animation
+        returnStartAngle = currentRollAngle;
+        returnTimer = 0f;
+        isReturning = true;
+        isRolling = false;
+        isHoldingRoll = false;
     }
 }
