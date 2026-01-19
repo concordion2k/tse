@@ -8,4 +8,4 @@ Please feel free to raise a GitHub issue with ideas or thoughts on the prototype
 
 Project currently uses Unity version `6000.3.2f1`
 
-<img src="docs/images/game.png" width="100%" alt="Game Screenshot" />
+<img src="docs/gifs/gameplay.gif" width="100%" alt="Game Screenshot" />
