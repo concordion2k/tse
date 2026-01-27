@@ -10,12 +10,12 @@ Project currently uses Unity version `6000.3.2f1`
 
 ## Contributing
 
-Please create a branch of using the below pattern:
+Please create a branch using the below pattern:
 
 - `feature/name-of-feature`
 - `bugfix/bug-fix`
 - `chore/thing-to-do`
 
-Create a PR into `main` and review. Add references to any GitHub issues in the associated project in the PR title and body.
+Create a PR into `main` and review. Add references to any GitHub issues in [`tse` Project Board](https://github.com/users/concordion2k/projects/1/views/2) in the PR title and body.
 
 <img src="docs/gifs/gameplay.gif" width="100%" alt="Game Screenshot" />
