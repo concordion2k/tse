@@ -75,11 +75,19 @@ public class Projectile : MonoBehaviour
         // Check if we hit an enemy or obstacle
         if (other.CompareTag("Enemy") || other.CompareTag("Obstacle"))
         {
-            // Try to apply damage if the object has a health component
-            var health = other.GetComponent<PlayerShipHealth>();
-            if (health != null)
+            // Try to apply damage - check for EnemyHealth first, then PlayerShipHealth
+            var enemyHealth = other.GetComponent<EnemyHealth>();
+            if (enemyHealth != null)
             {
-                health.TakeDamage(damage);
+                enemyHealth.TakeDamage(damage);
+            }
+            else
+            {
+                var playerHealth = other.GetComponent<PlayerShipHealth>();
+                if (playerHealth != null)
+                {
+                    playerHealth.TakeDamage(damage);
+                }
             }
 
             DestroyProjectile();
