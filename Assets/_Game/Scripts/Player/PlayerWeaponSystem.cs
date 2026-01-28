@@ -91,7 +91,7 @@ public class PlayerWeaponSystem : MonoBehaviour
         var projectileComponent = projectile.GetComponent<Projectile>();
         if (projectileComponent != null)
         {
-            projectileComponent.Initialize(firePoint.forward, projectileSpeed);
+            projectileComponent.Initialize(firePoint.forward, projectileSpeed, Projectile.ProjectileTarget.Enemy);
         }
 
         // Play fire sound

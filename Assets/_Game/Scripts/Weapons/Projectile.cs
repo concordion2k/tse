@@ -3,6 +3,13 @@ using UnityEngine;
 [RequireComponent(typeof(Rigidbody))]
 public class Projectile : MonoBehaviour
 {
+    public enum ProjectileTarget
+    {
+        Enemy,
+        Player,
+        Both
+    }
+
     [Header("Projectile Settings")]
     [Tooltip("Movement speed in units per second")]
     public float speed = 50f;
@@ -15,6 +22,10 @@ public class Projectile : MonoBehaviour
 
     [Tooltip("Maximum distance from spawn position before auto-destroy")]
     public float maxDistance = 100f;
+
+    [Header("Targeting")]
+    [Tooltip("Which targets this projectile can damage.")]
+    public ProjectileTarget targetType = ProjectileTarget.Enemy;
 
     private Rigidbody rb;
     private Vector3 startPosition;
@@ -31,6 +42,18 @@ public class Projectile : MonoBehaviour
     }
 
     public void Initialize(Vector3 direction, float speedOverride = -1f)
+    {
+        targetType = ProjectileTarget.Enemy;
+        InitializeInternal(direction, speedOverride);
+    }
+
+    public void Initialize(Vector3 direction, float speedOverride, ProjectileTarget targetOverride)
+    {
+        targetType = targetOverride;
+        InitializeInternal(direction, speedOverride);
+    }
+
+    private void InitializeInternal(Vector3 direction, float speedOverride)
     {
         startPosition = transform.position;
         lifetimeTimer = 0f;
@@ -72,24 +95,35 @@ public class Projectile : MonoBehaviour
     {
         if (!isActive) return;
 
-        // Check if we hit an enemy or obstacle
-        if (other.CompareTag("Enemy") || other.CompareTag("Obstacle"))
+        bool didHit = false;
+
+        if (targetType == ProjectileTarget.Player || targetType == ProjectileTarget.Both)
         {
-            // Try to apply damage - check for EnemyHealth first, then PlayerShipHealth
+            var playerHealth = other.GetComponent<PlayerShipHealth>();
+            if (playerHealth != null)
+            {
+                playerHealth.TakeDamage(damage);
+                didHit = true;
+            }
+        }
+
+        if (!didHit && (targetType == ProjectileTarget.Enemy || targetType == ProjectileTarget.Both))
+        {
             var enemyHealth = other.GetComponent<EnemyHealth>();
             if (enemyHealth != null)
             {
                 enemyHealth.TakeDamage(damage);
+                didHit = true;
             }
-            else
-            {
-                var playerHealth = other.GetComponent<PlayerShipHealth>();
-                if (playerHealth != null)
-                {
-                    playerHealth.TakeDamage(damage);
-                }
-            }
+        }
 
+        if (!didHit && other.CompareTag("Obstacle"))
+        {
+            didHit = true;
+        }
+
+        if (didHit)
+        {
             DestroyProjectile();
         }
     }
