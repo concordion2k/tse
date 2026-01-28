@@ -299,6 +299,18 @@ PrefabInstance:
       propertyPath: radius
       value: 8
       objectReference: {fileID: 0}
+    - target: {fileID: 8000000000000000001, guid: 1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d, type: 3}
+      propertyPath: fireRate
+      value: 2
+      objectReference: {fileID: 0}
+    - target: {fileID: 8000000000000000001, guid: 1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d, type: 3}
+      propertyPath: accuracyAngle
+      value: 1
+      objectReference: {fileID: 0}
+    - target: {fileID: 8000000000000000001, guid: 1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d, type: 3}
+      propertyPath: projectileSpeed
+      value: 100
+      objectReference: {fileID: 0}
     m_RemovedComponents: []
     m_RemovedGameObjects: []
     m_AddedGameObjects: []
@@ -5704,6 +5716,10 @@ PrefabInstance:
       propertyPath: radius
       value: 5
       objectReference: {fileID: 0}
+    - target: {fileID: 8000000000000000002, guid: 2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e, type: 3}
+      propertyPath: fireRate
+      value: 1.5
+      objectReference: {fileID: 0}
     m_RemovedComponents: []
     m_RemovedGameObjects: []
     m_AddedGameObjects: []
@@ -6275,6 +6291,10 @@ PrefabInstance:
     - target: {fileID: 7000000000000000002, guid: 2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e, type: 3}
       propertyPath: radius
       value: 4
+      objectReference: {fileID: 0}
+    - target: {fileID: 8000000000000000002, guid: 2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e, type: 3}
+      propertyPath: fireRate
+      value: 1.5
       objectReference: {fileID: 0}
     m_RemovedComponents: []
     m_RemovedGameObjects: []
@@ -6873,6 +6893,14 @@ PrefabInstance:
       propertyPath: radius
       value: 10
       objectReference: {fileID: 0}
+    - target: {fileID: 8000000000000000003, guid: 3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f, type: 3}
+      propertyPath: fireRate
+      value: 5
+      objectReference: {fileID: 0}
+    - target: {fileID: 8000000000000000003, guid: 3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f, type: 3}
+      propertyPath: projectileSpeed
+      value: 80
+      objectReference: {fileID: 0}
     m_RemovedComponents: []
     m_RemovedGameObjects: []
     m_AddedGameObjects: []
@@ -7249,6 +7277,18 @@ PrefabInstance:
     - target: {fileID: 7000000000000000001, guid: 1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d, type: 3}
       propertyPath: radius
       value: 4
+      objectReference: {fileID: 0}
+    - target: {fileID: 8000000000000000001, guid: 1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d, type: 3}
+      propertyPath: fireRate
+      value: 3
+      objectReference: {fileID: 0}
+    - target: {fileID: 8000000000000000001, guid: 1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d, type: 3}
+      propertyPath: accuracyAngle
+      value: 1
+      objectReference: {fileID: 0}
+    - target: {fileID: 8000000000000000001, guid: 1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d, type: 3}
+      propertyPath: projectileSpeed
+      value: 100
       objectReference: {fileID: 0}
     m_RemovedComponents: []
     m_RemovedGameObjects: []
