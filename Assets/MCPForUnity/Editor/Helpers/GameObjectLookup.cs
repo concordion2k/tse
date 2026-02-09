@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using Newtonsoft.Json.Linq;
 using UnityEditor;
+using UnityEditor.SceneManagement;
 using UnityEngine;
 using UnityEngine.SceneManagement;
 
@@ -68,7 +69,9 @@ namespace MCPForUnity.Editor.Helpers
         /// </summary>
         public static GameObject FindById(int instanceId)
         {
+#pragma warning disable CS0618 // Type or member is obsolete
             return EditorUtility.InstanceIDToObject(instanceId) as GameObject;
+#pragma warning restore CS0618
         }
 
         /// <summary>
@@ -102,7 +105,9 @@ namespace MCPForUnity.Editor.Helpers
                 case SearchMethod.ById:
                     if (int.TryParse(searchTerm, out int instanceId))
                     {
+#pragma warning disable CS0618 // Type or member is obsolete
                         var obj = EditorUtility.InstanceIDToObject(instanceId) as GameObject;
+#pragma warning restore CS0618
                         if (obj != null && (includeInactive || obj.activeInHierarchy))
                         {
                             results.Add(instanceId);
@@ -147,19 +152,45 @@ namespace MCPForUnity.Editor.Helpers
 
         private static IEnumerable<int> SearchByPath(string path, bool includeInactive)
         {
+            // Check Prefab Stage first - GameObject.Find() doesn't work in Prefab Stage
+            var prefabStage = PrefabStageUtility.GetCurrentPrefabStage();
+            if (prefabStage != null)
+            {
+                // Use GetAllSceneObjects which already handles Prefab Stage
+                var allObjects = GetAllSceneObjects(includeInactive);
+                foreach (var go in allObjects)
+                {
+                    if (MatchesPath(go, path))
+                    {
+                        yield return go.GetInstanceID();
+                    }
+                }
+                yield break;
+            }
+
+            // Normal scene mode
             // NOTE: Unity's GameObject.Find(path) only finds ACTIVE GameObjects.
-            // The includeInactive parameter has no effect here due to Unity API limitations.
-            // Consider using by_name search with includeInactive if you need to find inactive objects.
+            // If includeInactive=true, we need to search manually to find inactive objects.
             if (includeInactive)
             {
-                McpLog.Warn("[GameObjectLookup] SearchByPath with includeInactive=true: " +
-                    "GameObject.Find() cannot find inactive objects. Use by_name search instead.");
+                // Search manually to support inactive objects
+                var allObjects = GetAllSceneObjects(true);
+                foreach (var go in allObjects)
+                {
+                    if (MatchesPath(go, path))
+                    {
+                        yield return go.GetInstanceID();
+                    }
+                }
             }
-            
-            var found = GameObject.Find(path);
-            if (found != null)
+            else
             {
-                yield return found.GetInstanceID();
+                // Use GameObject.Find for active objects only (Unity API limitation)
+                var found = GameObject.Find(path);
+                if (found != null)
+                {
+                    yield return found.GetInstanceID();
+                }
             }
         }
 
@@ -249,6 +280,19 @@ namespace MCPForUnity.Editor.Helpers
         /// </summary>
         public static IEnumerable<GameObject> GetAllSceneObjects(bool includeInactive)
         {
+            // Check Prefab Stage first
+            var prefabStage = PrefabStageUtility.GetCurrentPrefabStage();
+            if (prefabStage != null && prefabStage.prefabContentsRoot != null)
+            {
+                // Use Prefab Stage's prefabContentsRoot
+                foreach (var go in GetObjectAndDescendants(prefabStage.prefabContentsRoot, includeInactive))
+                {
+                    yield return go;
+                }
+                yield break;
+            }
+
+            // Normal scene mode
             var scene = SceneManager.GetActiveScene();
             if (!scene.IsValid())
                 yield break;
@@ -288,6 +332,18 @@ namespace MCPForUnity.Editor.Helpers
         public static Type FindComponentType(string typeName)
         {
             return UnityTypeResolver.ResolveComponent(typeName);
+        }
+
+        /// <summary>
+        /// Checks whether a GameObject matches a path or trailing path segment.
+        /// </summary>
+        internal static bool MatchesPath(GameObject go, string path)
+        {
+            if (go == null || string.IsNullOrEmpty(path))
+                return false;
+
+            var goPath = GetGameObjectPath(go);
+            return goPath == path || goPath.EndsWith("/" + path);
         }
 
         /// <summary>

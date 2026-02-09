@@ -31,6 +31,7 @@ namespace MCPForUnity.Editor.Windows.Components.ClientConfig
         private VisualElement claudeCliPathRow;
         private TextField claudeCliPath;
         private Button browseClaudeButton;
+        private Foldout manualConfigFoldout;
         private TextField configPathField;
         private Button copyPathButton;
         private Button openFileButton;
@@ -44,6 +45,13 @@ namespace MCPForUnity.Editor.Windows.Components.ClientConfig
         private readonly HashSet<IMcpClientConfigurator> statusRefreshInFlight = new();
         private static readonly TimeSpan StatusRefreshInterval = TimeSpan.FromSeconds(45);
         private int selectedClientIndex = 0;
+
+        // Events
+        /// <summary>
+        /// Fired when the selected client's configured transport is detected/updated.
+        /// The parameter contains the client name and its configured transport.
+        /// </summary>
+        public event Action<string, ConfiguredTransport> OnClientTransportDetected;
 
         public VisualElement Root { get; private set; }
 
@@ -66,6 +74,7 @@ namespace MCPForUnity.Editor.Windows.Components.ClientConfig
             claudeCliPathRow = Root.Q<VisualElement>("claude-cli-path-row");
             claudeCliPath = Root.Q<TextField>("claude-cli-path");
             browseClaudeButton = Root.Q<Button>("browse-claude-button");
+            manualConfigFoldout = Root.Q<Foldout>("manual-config-foldout");
             configPathField = Root.Q<TextField>("config-path");
             copyPathButton = Root.Q<Button>("copy-path-button");
             openFileButton = Root.Q<Button>("open-file-button");
@@ -76,6 +85,12 @@ namespace MCPForUnity.Editor.Windows.Components.ClientConfig
 
         private void InitializeUI()
         {
+            // Ensure manual config foldout starts collapsed
+            if (manualConfigFoldout != null)
+            {
+                manualConfigFoldout.value = false;
+            }
+
             var clientNames = configurators.Select(c => c.DisplayName).ToList();
             clientDropdown.choices = clientNames;
             if (clientNames.Count > 0)
@@ -84,7 +99,7 @@ namespace MCPForUnity.Editor.Windows.Components.ClientConfig
             }
 
             claudeCliPathRow.style.display = DisplayStyle.None;
-            
+
             // Initialize the configuration display for the first selected client
             UpdateClientStatus();
             UpdateManualConfiguration();
@@ -221,6 +236,13 @@ namespace MCPForUnity.Editor.Windows.Components.ClientConfig
 
             var client = configurators[selectedClientIndex];
 
+            // Handle CLI configurators asynchronously
+            if (client is ClaudeCliMcpConfigurator)
+            {
+                ConfigureClaudeCliAsync(client);
+                return;
+            }
+
             try
             {
                 MCPServiceLocator.Client.ConfigureClient(client);
@@ -235,6 +257,95 @@ namespace MCPForUnity.Editor.Windows.Components.ClientConfig
                 McpLog.Error($"Configuration failed: {ex.Message}");
                 EditorUtility.DisplayDialog("Configuration Failed", ex.Message, "OK");
             }
+        }
+
+        private void ConfigureClaudeCliAsync(IMcpClientConfigurator client)
+        {
+            if (statusRefreshInFlight.Contains(client))
+                return;
+
+            statusRefreshInFlight.Add(client);
+            bool isCurrentlyConfigured = client.Status == McpStatus.Configured;
+            ApplyStatusToUi(client, showChecking: true, customMessage: isCurrentlyConfigured ? "Unregistering..." : "Registering...");
+
+            // Capture ALL main-thread-only values before async task
+            string projectDir = Path.GetDirectoryName(Application.dataPath);
+            bool useHttpTransport = EditorConfigurationCache.Instance.UseHttpTransport;
+            string claudePath = MCPServiceLocator.Paths.GetClaudeCliPath();
+            string httpUrl = HttpEndpointUtility.GetMcpRpcUrl();
+            var (uvxPath, gitUrl, packageName) = AssetPathUtility.GetUvxCommandParts();
+            bool shouldForceRefresh = AssetPathUtility.ShouldForceUvxRefresh();
+            string apiKey = EditorPrefs.GetString(EditorPrefKeys.ApiKey, string.Empty);
+
+            // Compute pathPrepend on main thread
+            string pathPrepend = null;
+            if (Application.platform == RuntimePlatform.OSXEditor)
+                pathPrepend = "/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin";
+            else if (Application.platform == RuntimePlatform.LinuxEditor)
+                pathPrepend = "/usr/local/bin:/usr/bin:/bin";
+            try
+            {
+                string claudeDir = Path.GetDirectoryName(claudePath);
+                if (!string.IsNullOrEmpty(claudeDir))
+                    pathPrepend = string.IsNullOrEmpty(pathPrepend) ? claudeDir : $"{claudeDir}:{pathPrepend}";
+            }
+            catch { }
+
+            Task.Run(() =>
+            {
+                try
+                {
+                    if (client is ClaudeCliMcpConfigurator cliConfigurator)
+                    {
+                        var serverTransport = HttpEndpointUtility.GetCurrentServerTransport();
+                        cliConfigurator.ConfigureWithCapturedValues(
+                            projectDir, claudePath, pathPrepend,
+                            useHttpTransport, httpUrl,
+                            uvxPath, gitUrl, packageName, shouldForceRefresh,
+                            apiKey, serverTransport);
+                    }
+                    return (success: true, error: (string)null);
+                }
+                catch (Exception ex)
+                {
+                    return (success: false, error: ex.Message);
+                }
+            }).ContinueWith(t =>
+            {
+                string errorMessage = null;
+                if (t.IsFaulted && t.Exception != null)
+                {
+                    errorMessage = t.Exception.GetBaseException()?.Message ?? "Configuration failed";
+                }
+                else if (!t.Result.success)
+                {
+                    errorMessage = t.Result.error;
+                }
+
+                EditorApplication.delayCall += () =>
+                {
+                    statusRefreshInFlight.Remove(client);
+                    lastStatusChecks.Remove(client);
+
+                    if (errorMessage != null)
+                    {
+                        if (client is McpClientConfiguratorBase baseConfigurator)
+                        {
+                            baseConfigurator.Client.SetStatus(McpStatus.Error, errorMessage);
+                        }
+                        McpLog.Error($"Configuration failed: {errorMessage}");
+                        RefreshClientStatus(client, forceImmediate: true);
+                    }
+                    else
+                    {
+                        // Registration succeeded - trust the status set by RegisterWithCapturedValues
+                        // and update UI without re-verifying (which could fail due to CLI timing/scope issues)
+                        lastStatusChecks[client] = DateTime.UtcNow;
+                        ApplyStatusToUi(client);
+                    }
+                    UpdateManualConfiguration();
+                };
+            });
         }
 
         private void OnBrowseClaudeClicked()
@@ -345,7 +456,7 @@ namespace MCPForUnity.Editor.Windows.Components.ClientConfig
 
                 // Capture main-thread-only values before async task
                 string projectDir = Path.GetDirectoryName(Application.dataPath);
-                bool useHttpTransport = EditorPrefs.GetBool(EditorPrefKeys.UseHttpTransport, true);
+                bool useHttpTransport = EditorConfigurationCache.Instance.UseHttpTransport;
                 string claudePath = MCPServiceLocator.Paths.GetClaudeCliPath();
 
                 Task.Run(() =>
@@ -396,7 +507,7 @@ namespace MCPForUnity.Editor.Windows.Components.ClientConfig
             return (DateTime.UtcNow - last) > StatusRefreshInterval;
         }
 
-        private void ApplyStatusToUi(IMcpClientConfigurator client, bool showChecking = false)
+        private void ApplyStatusToUi(IMcpClientConfigurator client, bool showChecking = false, string customMessage = null)
         {
             if (selectedClientIndex < 0 || selectedClientIndex >= configurators.Count)
                 return;
@@ -410,34 +521,54 @@ namespace MCPForUnity.Editor.Windows.Components.ClientConfig
 
             if (showChecking)
             {
-                clientStatusLabel.text = "Checking...";
+                clientStatusLabel.text = customMessage ?? "Checking...";
                 clientStatusLabel.style.color = StyleKeyword.Null;
                 clientStatusIndicator.AddToClassList("warning");
                 configureButton.text = client.GetConfigureActionLabel();
                 return;
             }
 
-            clientStatusLabel.text = GetStatusDisplayString(client.Status);
-            clientStatusLabel.style.color = StyleKeyword.Null;
-
-            switch (client.Status)
+            // Check for transport mismatch (3-way: Stdio, Http, HttpRemote)
+            bool hasTransportMismatch = false;
+            if (client.ConfiguredTransport != ConfiguredTransport.Unknown)
             {
-                case McpStatus.Configured:
-                case McpStatus.Running:
-                case McpStatus.Connected:
-                    clientStatusIndicator.AddToClassList("configured");
-                    break;
-                case McpStatus.IncorrectPath:
-                case McpStatus.CommunicationError:
-                case McpStatus.NoResponse:
-                    clientStatusIndicator.AddToClassList("warning");
-                    break;
-                default:
-                    clientStatusIndicator.AddToClassList("not-configured");
-                    break;
+                ConfiguredTransport serverTransport = HttpEndpointUtility.GetCurrentServerTransport();
+                hasTransportMismatch = client.ConfiguredTransport != serverTransport;
             }
 
+            // If configured but with transport mismatch, show warning state
+            if (hasTransportMismatch && (client.Status == McpStatus.Configured || client.Status == McpStatus.Running || client.Status == McpStatus.Connected))
+            {
+                clientStatusLabel.text = "Transport Mismatch";
+                clientStatusIndicator.AddToClassList("warning");
+            }
+            else
+            {
+                clientStatusLabel.text = GetStatusDisplayString(client.Status);
+
+                switch (client.Status)
+                {
+                    case McpStatus.Configured:
+                    case McpStatus.Running:
+                    case McpStatus.Connected:
+                        clientStatusIndicator.AddToClassList("configured");
+                        break;
+                    case McpStatus.IncorrectPath:
+                    case McpStatus.CommunicationError:
+                    case McpStatus.NoResponse:
+                        clientStatusIndicator.AddToClassList("warning");
+                        break;
+                    default:
+                        clientStatusIndicator.AddToClassList("not-configured");
+                        break;
+                }
+            }
+
+            clientStatusLabel.style.color = StyleKeyword.Null;
             configureButton.text = client.GetConfigureActionLabel();
+
+            // Notify listeners about the client's configured transport
+            OnClientTransportDetected?.Invoke(client.DisplayName, client.ConfiguredTransport);
         }
     }
 }

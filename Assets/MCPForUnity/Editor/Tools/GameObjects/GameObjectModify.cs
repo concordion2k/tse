@@ -5,6 +5,7 @@ using System.Linq;
 using MCPForUnity.Editor.Helpers;
 using Newtonsoft.Json.Linq;
 using UnityEditor;
+using UnityEditor.SceneManagement;
 using UnityEditorInternal;
 using UnityEngine;
 
@@ -14,7 +15,15 @@ namespace MCPForUnity.Editor.Tools.GameObjects
     {
         internal static object Handle(JObject @params, JToken targetToken, string searchMethod)
         {
-            GameObject targetGo = ManageGameObjectCommon.FindObjectInternal(targetToken, searchMethod);
+            // When setActive=true is specified, we need to search for inactive objects
+            // otherwise we can't find an inactive object to activate it
+            JObject findParams = null;
+            if (@params["setActive"]?.ToObject<bool?>() == true)
+            {
+                findParams = new JObject { ["searchInactive"] = true };
+            }
+            
+            GameObject targetGo = ManageGameObjectCommon.FindObjectInternal(targetToken, searchMethod, findParams);
             if (targetGo == null)
             {
                 return new ErrorResponse($"Target GameObject ('{targetToken}') not found using method '{searchMethod ?? "default"}'.");
@@ -28,6 +37,42 @@ namespace MCPForUnity.Editor.Tools.GameObjects
             string name = @params["name"]?.ToString();
             if (!string.IsNullOrEmpty(name) && targetGo.name != name)
             {
+                // Check if we're renaming the root object of an open prefab stage
+                var prefabStageForRename = PrefabStageUtility.GetCurrentPrefabStage();
+                bool isRenamingPrefabRoot = prefabStageForRename != null &&
+                                            prefabStageForRename.prefabContentsRoot == targetGo;
+
+                if (isRenamingPrefabRoot)
+                {
+                    // Rename the prefab asset file to match the new name (avoids Unity dialog)
+                    string assetPath = prefabStageForRename.assetPath;
+                    string directory = System.IO.Path.GetDirectoryName(assetPath);
+                    string newAssetPath = AssetPathUtility.NormalizeSeparators(System.IO.Path.Combine(directory, name + ".prefab"));
+
+                    // Only rename if the path actually changes
+                    if (newAssetPath != assetPath)
+                    {
+                        // Check for collision using GUID comparison
+                        string currentGuid = AssetDatabase.AssetPathToGUID(assetPath);
+                        string existingGuid = AssetDatabase.AssetPathToGUID(newAssetPath);
+
+                        // Collision only if there's a different asset at the new path
+                        if (!string.IsNullOrEmpty(existingGuid) && existingGuid != currentGuid)
+                        {
+                            return new ErrorResponse($"Cannot rename prefab root to '{name}': a prefab already exists at '{newAssetPath}'.");
+                        }
+
+                        // Rename the asset file
+                        string renameError = AssetDatabase.RenameAsset(assetPath, name);
+                        if (!string.IsNullOrEmpty(renameError))
+                        {
+                            return new ErrorResponse($"Failed to rename prefab asset: {renameError}");
+                        }
+
+                        McpLog.Info($"[GameObjectModify] Renamed prefab asset from '{assetPath}' to '{newAssetPath}'");
+                    }
+                }
+
                 targetGo.name = name;
                 modified = true;
             }
@@ -231,6 +276,18 @@ namespace MCPForUnity.Editor.Tools.GameObjects
             }
 
             EditorUtility.SetDirty(targetGo);
+
+            // Mark the appropriate scene as dirty (handles both regular scenes and prefab stages)
+            var prefabStage = PrefabStageUtility.GetCurrentPrefabStage();
+            if (prefabStage != null)
+            {
+                EditorSceneManager.MarkSceneDirty(prefabStage.scene);
+            }
+            else
+            {
+                EditorSceneManager.MarkSceneDirty(EditorSceneManager.GetActiveScene());
+            }
+
             return new SuccessResponse(
                 $"GameObject '{targetGo.name}' modified successfully.",
                 Helpers.GameObjectSerializer.GetGameObjectData(targetGo)

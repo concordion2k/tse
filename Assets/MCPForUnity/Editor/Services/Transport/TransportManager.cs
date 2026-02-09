@@ -24,9 +24,6 @@ namespace MCPForUnity.Editor.Services.Transport
                 () => new StdioTransportClient());
         }
 
-        public IMcpTransportClient ActiveTransport => null; // Deprecated single-transport accessor
-        public TransportMode? ActiveMode => null; // Deprecated single-transport accessor
-
         public void Configure(
             Func<IMcpTransportClient> webSocketFactory,
             Func<IMcpTransportClient> stdioFactory)
@@ -70,7 +67,7 @@ namespace MCPForUnity.Editor.Services.Transport
                 {
                     McpLog.Warn($"Error while stopping transport {client.TransportName}: {ex.Message}");
                 }
-                UpdateState(mode, TransportState.Disconnected(client.TransportName, "Failed to start"));
+                UpdateState(mode, TransportState.Disconnected(client.TransportName, client.State?.Error ?? "Failed to start"));
                 return false;
             }
 

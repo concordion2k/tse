@@ -1,7 +1,12 @@
 using UnityEngine;
+using LevelDesigner;
 
 public class PlayerShipMovement : MonoBehaviour
 {
+    [Header("Path Following")]
+    [Tooltip("Reference to level path follower (optional - uses constant forward if null)")]
+    public LevelPathFollower pathFollower;
+
     [Header("Movement Settings")]
     [Tooltip("Constant forward movement speed in units per second")]
     public float forwardSpeed = 20f;
@@ -128,14 +133,25 @@ public class PlayerShipMovement : MonoBehaviour
         return Vector3.Lerp(previousCenterPath, centerPath, interpolationFactor);
     }
 
+    private bool UsePathFollowing => pathFollower != null && pathFollower.HasValidPath;
+
     void FixedUpdate()
     {
         // Store previous position for interpolation
         previousCenterPath = centerPath;
 
-        // Move the center path forward constantly using fixed direction
-        // (not affected by ship rotation to prevent oscillation)
-        centerPath += forwardDirection * forwardSpeed * Time.fixedDeltaTime;
+        if (UsePathFollowing)
+        {
+            // Path-based movement - use raw (non-interpolated) position here
+            // so the ship's own Update interpolation handles smoothing
+            centerPath = pathFollower.GetCurrentPositionRaw();
+            forwardDirection = pathFollower.GetPathForward();
+        }
+        else
+        {
+            // Original constant forward movement (backward compatible)
+            centerPath += forwardDirection * forwardSpeed * Time.fixedDeltaTime;
+        }
 
         // Reset interpolation timer
         fixedUpdateTimer = 0f;

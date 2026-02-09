@@ -1,7 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.Linq;
-using System.Reflection;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 using MCPForUnity.Editor.Helpers;
@@ -20,14 +18,240 @@ namespace MCPForUnity.Editor.Tools.Vfx
     /// - Visual Effect Graph (modern GPU particles, currently only support HDRP, other SRPs may not work)
     /// - LineRenderer (lines, bezier curves, shapes)
     /// - TrailRenderer (motion trails)
-    /// - More to come based on demand and feedback!
+    ///
+    /// COMPONENT REQUIREMENTS:
+    /// - particle_* actions require ParticleSystem component on target GameObject
+    /// - vfx_* actions require VisualEffect component (+ com.unity.visualeffectgraph package)
+    /// - line_* actions require LineRenderer component
+    /// - trail_* actions require TrailRenderer component
+    ///
+    /// TARGETING:
+    /// Use 'target' parameter with optional 'searchMethod':
+    /// - by_name (default): "Fire" finds first GameObject named "Fire"
+    /// - by_path: "Effects/Fire" finds GameObject at hierarchy path
+    /// - by_id: "12345" finds GameObject by instance ID (most reliable)
+    /// - by_tag: "Enemy" finds first GameObject with tag
+    ///
+    /// AUTOMATIC MATERIAL ASSIGNMENT:
+    /// VFX components (ParticleSystem, LineRenderer, TrailRenderer) automatically receive
+    /// appropriate default materials based on the active rendering pipeline when no material
+    /// is explicitly specified:
+    /// - Built-in Pipeline: Uses Unity's built-in Default-Particle.mat and Default-Line.mat
+    /// - URP/HDRP: Creates materials with pipeline-appropriate unlit shaders
+    /// - Materials are cached to avoid recreation
+    /// - Explicit materialPath parameter always overrides auto-assignment
+    /// - Auto-assigned materials are logged for transparency
+    ///
+    /// AVAILABLE ACTIONS:
+    ///
+    /// ParticleSystem (particle_*):
+    ///   - particle_get_info: Get system info and current state
+    ///   - particle_set_main: Set main module (duration, looping, startLifetime, startSpeed, startSize, startColor, gravityModifier, maxParticles, simulationSpace, playOnAwake, etc.)
+    ///   - particle_set_emission: Set emission module (rateOverTime, rateOverDistance)
+    ///   - particle_set_shape: Set shape module (shapeType, radius, angle, arc, position, rotation, scale)
+    ///   - particle_set_color_over_lifetime: Set color gradient over particle lifetime
+    ///   - particle_set_size_over_lifetime: Set size curve over particle lifetime
+    ///   - particle_set_velocity_over_lifetime: Set velocity (x, y, z, speedModifier, space)
+    ///   - particle_set_noise: Set noise turbulence (strength, frequency, scrollSpeed, damping, octaveCount, quality)
+    ///   - particle_set_renderer: Set renderer (renderMode, material, sortMode, minParticleSize, maxParticleSize, etc.)
+    ///   - particle_enable_module: Enable/disable modules by name
+    ///   - particle_play/stop/pause/restart/clear: Playback control (withChildren optional)
+    ///   - particle_add_burst: Add emission burst (time, count, cycles, interval, probability)
+    ///   - particle_clear_bursts: Clear all bursts
+    ///
+    /// Visual Effect Graph (vfx_*):
+    ///   Asset Management:
+    ///   - vfx_create_asset: Create new VFX asset file (assetName, folderPath, template, overwrite)
+    ///   - vfx_assign_asset: Assign VFX asset to VisualEffect component (target, assetPath)
+    ///   - vfx_list_templates: List available VFX templates in project and packages
+    ///   - vfx_list_assets: List all VFX assets (folder, search filters)
+    ///   Runtime Control:
+    ///   - vfx_get_info: Get VFX info including exposed parameters
+    ///   - vfx_set_float/int/bool: Set exposed scalar parameters (parameter, value)
+    ///   - vfx_set_vector2/vector3/vector4: Set exposed vector parameters (parameter, value as array)
+    ///   - vfx_set_color: Set exposed color (parameter, color as [r,g,b,a])
+    ///   - vfx_set_gradient: Set exposed gradient (parameter, gradient)
+    ///   - vfx_set_texture: Set exposed texture (parameter, texturePath)
+    ///   - vfx_set_mesh: Set exposed mesh (parameter, meshPath)
+    ///   - vfx_set_curve: Set exposed animation curve (parameter, curve)
+    ///   - vfx_send_event: Send event with attributes (eventName, position, velocity, color, size, lifetime)
+    ///   - vfx_play/stop/pause/reinit: Playback control
+    ///   - vfx_set_playback_speed: Set playback speed multiplier (playRate)
+    ///   - vfx_set_seed: Set random seed (seed, resetSeedOnPlay)
+    ///
+    /// LineRenderer (line_*):
+    ///   - line_get_info: Get line info (position count, width, color, etc.)
+    ///   - line_set_positions: Set all positions (positions as [[x,y,z], ...])
+    ///   - line_add_position: Add position at end (position as [x,y,z])
+    ///   - line_set_position: Set specific position (index, position)
+    ///   - line_set_width: Set width (width, startWidth, endWidth, widthCurve, widthMultiplier)
+    ///   - line_set_color: Set color (color, gradient, startColor, endColor)
+    ///   - line_set_material: Set material (materialPath)
+    ///   - line_set_properties: Set renderer properties (loop, useWorldSpace, alignment, textureMode, numCornerVertices, numCapVertices, etc.)
+    ///   - line_clear: Clear all positions
+    ///   Shape Creation:
+    ///   - line_create_line: Create simple line (start, end, segments)
+    ///   - line_create_circle: Create circle (center, radius, segments, normal)
+    ///   - line_create_arc: Create arc (center, radius, startAngle, endAngle, segments, normal)
+    ///   - line_create_bezier: Create Bezier curve (start, end, controlPoint1, controlPoint2, segments)
+    ///
+    /// TrailRenderer (trail_*):
+    ///   - trail_get_info: Get trail info
+    ///   - trail_set_time: Set trail duration (time)
+    ///   - trail_set_width: Set width (width, startWidth, endWidth, widthCurve, widthMultiplier)
+    ///   - trail_set_color: Set color (color, gradient, startColor, endColor)
+    ///   - trail_set_material: Set material (materialPath)
+    ///   - trail_set_properties: Set properties (minVertexDistance, autodestruct, emitting, alignment, textureMode, etc.)
+    ///   - trail_clear: Clear trail
+    ///   - trail_emit: Emit point at current position (Unity 2021.1+)
+    ///
+    /// COMMON PARAMETERS:
+    /// - target (string): GameObject identifier
+    /// - searchMethod (string): "by_id" | "by_name" | "by_path" | "by_tag" | "by_layer"
+    /// - materialPath (string): Asset path to material (e.g., "Assets/Materials/Fire.mat")
+    /// - color (array): Color as [r, g, b, a] with values 0-1
+    /// - position (array): 3D position as [x, y, z]
+    /// - gradient (object): {colorKeys: [{color: [r,g,b,a], time: 0-1}], alphaKeys: [{alpha: 0-1, time: 0-1}]}
+    /// - curve (object): {keys: [{time: 0-1, value: number, inTangent: number, outTangent: number}]}
+    ///
+    /// For full parameter details, refer to Unity documentation for each component type.
     /// </summary>
     [McpForUnityTool("manage_vfx", AutoRegister = false)]
     public static class ManageVFX
     {
+        private static readonly Dictionary<string, string> ParamAliases = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+        {
+            { "size_over_lifetime", "size" },
+            { "start_color_line", "startColor" },
+            { "sorting_layer_id", "sortingLayerID" },
+            { "material", "materialPath" },
+        };
+
+        private static JObject NormalizeParams(JObject source)
+        {
+            if (source == null)
+            {
+                return new JObject();
+            }
+
+            var normalized = new JObject();
+            var properties = ExtractProperties(source);
+            if (properties != null)
+            {
+                foreach (var prop in properties.Properties())
+                {
+                    normalized[NormalizeKey(prop.Name, true)] = NormalizeToken(prop.Value);
+                }
+            }
+
+            foreach (var prop in source.Properties())
+            {
+                if (string.Equals(prop.Name, "properties", StringComparison.OrdinalIgnoreCase))
+                {
+                    continue;
+                }
+                normalized[NormalizeKey(prop.Name, true)] = NormalizeToken(prop.Value);
+            }
+
+            return normalized;
+        }
+
+        private static JObject ExtractProperties(JObject source)
+        {
+            if (source == null)
+            {
+                return null;
+            }
+
+            if (!source.TryGetValue("properties", StringComparison.OrdinalIgnoreCase, out var token))
+            {
+                return null;
+            }
+
+            if (token == null || token.Type == JTokenType.Null)
+            {
+                return null;
+            }
+
+            if (token is JObject obj)
+            {
+                return obj;
+            }
+
+            if (token.Type == JTokenType.String)
+            {
+                try
+                {
+                    return JToken.Parse(token.ToString()) as JObject;
+                }
+                catch (JsonException ex)
+                {
+                    throw new JsonException(  
+                        $"Failed to parse 'properties' JSON string. Raw value: {token}",  
+                        ex); 
+                }
+            }
+
+            return null;
+        }
+
+        private static string NormalizeKey(string key, bool allowAliases)
+        {
+            if (string.IsNullOrEmpty(key))
+            {
+                return key;
+            }
+            if (string.Equals(key, "action", StringComparison.OrdinalIgnoreCase))
+            {
+                return "action";
+            }
+            if (allowAliases && ParamAliases.TryGetValue(key, out var alias))
+            {
+                return alias;
+            }
+            if (key.IndexOf('_') >= 0)
+            {
+                return ToCamelCase(key);
+            }
+            return key;
+        }
+
+        private static JToken NormalizeToken(JToken token)
+        {
+            if (token == null)
+            {
+                return null;
+            }
+
+            if (token is JObject obj)
+            {
+                var normalized = new JObject();
+                foreach (var prop in obj.Properties())
+                {
+                    normalized[NormalizeKey(prop.Name, false)] = NormalizeToken(prop.Value);
+                }
+                return normalized;
+            }
+
+            if (token is JArray array)
+            {
+                var normalized = new JArray();
+                foreach (var item in array)
+                {
+                    normalized.Add(NormalizeToken(item));
+                }
+                return normalized;
+            }
+
+            return token;
+        }
+
+        private static string ToCamelCase(string key) => StringCaseUtility.ToCamelCase(key);
+
         public static object HandleCommand(JObject @params)
         {
-            string action = @params["action"]?.ToString();
+            JObject normalizedParams = NormalizeParams(@params);
+            string action = normalizedParams["action"]?.ToString();
             if (string.IsNullOrEmpty(action))
             {
                 return new { success = false, message = "Action is required" };
@@ -46,25 +270,25 @@ namespace MCPForUnity.Editor.Tools.Vfx
                 // ParticleSystem actions (particle_*)
                 if (actionLower.StartsWith("particle_"))
                 {
-                    return HandleParticleSystemAction(@params, actionLower.Substring(9));
+                    return HandleParticleSystemAction(normalizedParams, actionLower.Substring(9));
                 }
 
                 // VFX Graph actions (vfx_*)
                 if (actionLower.StartsWith("vfx_"))
                 {
-                    return HandleVFXGraphAction(@params, actionLower.Substring(4));
+                    return HandleVFXGraphAction(normalizedParams, actionLower.Substring(4));
                 }
 
                 // LineRenderer actions (line_*)
                 if (actionLower.StartsWith("line_"))
                 {
-                    return HandleLineRendererAction(@params, actionLower.Substring(5));
+                    return HandleLineRendererAction(normalizedParams, actionLower.Substring(5));
                 }
 
                 // TrailRenderer actions (trail_*)
                 if (actionLower.StartsWith("trail_"))
                 {
-                    return HandleTrailRendererAction(@params, actionLower.Substring(6));
+                    return HandleTrailRendererAction(normalizedParams, actionLower.Substring(6));
                 }
 
                 return new { success = false, message = $"Unknown action: {action}. Actions must be prefixed with: particle_, vfx_, line_, or trail_" };
@@ -112,629 +336,37 @@ namespace MCPForUnity.Editor.Tools.Vfx
             switch (action)
             {
                 // Asset management
-                case "create_asset": return VFXCreateAsset(@params);
-                case "assign_asset": return VFXAssignAsset(@params);
-                case "list_templates": return VFXListTemplates(@params);
-                case "list_assets": return VFXListAssets(@params);
-                
+                case "create_asset": return VfxGraphAssets.CreateAsset(@params);
+                case "assign_asset": return VfxGraphAssets.AssignAsset(@params);
+                case "list_templates": return VfxGraphAssets.ListTemplates(@params);
+                case "list_assets": return VfxGraphAssets.ListAssets(@params);
+
                 // Runtime parameter control
-                case "get_info": return VFXGetInfo(@params);
-                case "set_float": return VFXSetParameter<float>(@params, (vfx, n, v) => vfx.SetFloat(n, v));
-                case "set_int": return VFXSetParameter<int>(@params, (vfx, n, v) => vfx.SetInt(n, v));
-                case "set_bool": return VFXSetParameter<bool>(@params, (vfx, n, v) => vfx.SetBool(n, v));
-                case "set_vector2": return VFXSetVector(@params, 2);
-                case "set_vector3": return VFXSetVector(@params, 3);
-                case "set_vector4": return VFXSetVector(@params, 4);
-                case "set_color": return VFXSetColor(@params);
-                case "set_gradient": return VFXSetGradient(@params);
-                case "set_texture": return VFXSetTexture(@params);
-                case "set_mesh": return VFXSetMesh(@params);
-                case "set_curve": return VFXSetCurve(@params);
-                case "send_event": return VFXSendEvent(@params);
-                case "play": return VFXControl(@params, "play");
-                case "stop": return VFXControl(@params, "stop");
-                case "pause": return VFXControl(@params, "pause");
-                case "reinit": return VFXControl(@params, "reinit");
-                case "set_playback_speed": return VFXSetPlaybackSpeed(@params);
-                case "set_seed": return VFXSetSeed(@params);
+                case "get_info": return VfxGraphRead.GetInfo(@params);
+                case "set_float": return VfxGraphWrite.SetParameter<float>(@params, (vfx, n, v) => vfx.SetFloat(n, v));
+                case "set_int": return VfxGraphWrite.SetParameter<int>(@params, (vfx, n, v) => vfx.SetInt(n, v));
+                case "set_bool": return VfxGraphWrite.SetParameter<bool>(@params, (vfx, n, v) => vfx.SetBool(n, v));
+                case "set_vector2": return VfxGraphWrite.SetVector(@params, 2);
+                case "set_vector3": return VfxGraphWrite.SetVector(@params, 3);
+                case "set_vector4": return VfxGraphWrite.SetVector(@params, 4);
+                case "set_color": return VfxGraphWrite.SetColor(@params);
+                case "set_gradient": return VfxGraphWrite.SetGradient(@params);
+                case "set_texture": return VfxGraphWrite.SetTexture(@params);
+                case "set_mesh": return VfxGraphWrite.SetMesh(@params);
+                case "set_curve": return VfxGraphWrite.SetCurve(@params);
+                case "send_event": return VfxGraphWrite.SendEvent(@params);
+                case "play": return VfxGraphControl.Control(@params, "play");
+                case "stop": return VfxGraphControl.Control(@params, "stop");
+                case "pause": return VfxGraphControl.Control(@params, "pause");
+                case "reinit": return VfxGraphControl.Control(@params, "reinit");
+                case "set_playback_speed": return VfxGraphControl.SetPlaybackSpeed(@params);
+                case "set_seed": return VfxGraphControl.SetSeed(@params);
                 default:
                     return new { success = false, message = $"Unknown vfx action: {action}. Valid: create_asset, assign_asset, list_templates, list_assets, get_info, set_float, set_int, set_bool, set_vector2/3/4, set_color, set_gradient, set_texture, set_mesh, set_curve, send_event, play, stop, pause, reinit, set_playback_speed, set_seed" };
             }
 #endif
         }
 
-#if UNITY_VFX_GRAPH
-        private static VisualEffect FindVisualEffect(JObject @params)
-        {
-            GameObject go = ManageVfxCommon.FindTargetGameObject(@params);
-            return go?.GetComponent<VisualEffect>();
-        }
-
-        /// <summary>
-        /// Creates a new VFX Graph asset file from a template
-        /// </summary>
-        private static object VFXCreateAsset(JObject @params)
-        {
-            string assetName = @params["assetName"]?.ToString();
-            string folderPath = @params["folderPath"]?.ToString() ?? "Assets/VFX";
-            string template = @params["template"]?.ToString() ?? "empty";
-            
-            if (string.IsNullOrEmpty(assetName))
-                return new { success = false, message = "assetName is required" };
-            
-            // Ensure folder exists
-            if (!AssetDatabase.IsValidFolder(folderPath))
-            {
-                string[] folders = folderPath.Split('/');
-                string currentPath = folders[0];
-                for (int i = 1; i < folders.Length; i++)
-                {
-                    string newPath = currentPath + "/" + folders[i];
-                    if (!AssetDatabase.IsValidFolder(newPath))
-                    {
-                        AssetDatabase.CreateFolder(currentPath, folders[i]);
-                    }
-                    currentPath = newPath;
-                }
-            }
-            
-            string assetPath = $"{folderPath}/{assetName}.vfx";
-            
-            // Check if asset already exists
-            if (AssetDatabase.LoadAssetAtPath<UnityEngine.VFX.VisualEffectAsset>(assetPath) != null)
-            {
-                bool overwrite = @params["overwrite"]?.ToObject<bool>() ?? false;
-                if (!overwrite)
-                    return new { success = false, message = $"Asset already exists at {assetPath}. Set overwrite=true to replace." };
-                AssetDatabase.DeleteAsset(assetPath);
-            }
-            
-            // Find and copy template
-            string templatePath = FindVFXTemplate(template);
-            UnityEngine.VFX.VisualEffectAsset newAsset = null;
-            
-            if (!string.IsNullOrEmpty(templatePath) && System.IO.File.Exists(templatePath))
-            {
-                // templatePath is a full filesystem path, need to copy file directly
-                // Get the full destination path
-                string projectRoot = System.IO.Path.GetDirectoryName(Application.dataPath);
-                string fullDestPath = System.IO.Path.Combine(projectRoot, assetPath);
-                
-                // Ensure directory exists
-                string destDir = System.IO.Path.GetDirectoryName(fullDestPath);
-                if (!System.IO.Directory.Exists(destDir))
-                    System.IO.Directory.CreateDirectory(destDir);
-                
-                // Copy the file
-                System.IO.File.Copy(templatePath, fullDestPath, true);
-                AssetDatabase.Refresh();
-                newAsset = AssetDatabase.LoadAssetAtPath<UnityEngine.VFX.VisualEffectAsset>(assetPath);
-            }
-            else
-            {
-                // Create empty VFX asset using reflection to access internal API
-                // Note: Develop in Progress, TODO:// Find authenticated way to create VFX asset
-                try
-                {
-                    // Try to use VisualEffectAssetEditorUtility.CreateNewAsset if available
-                    var utilityType = System.Type.GetType("UnityEditor.VFX.VisualEffectAssetEditorUtility, Unity.VisualEffectGraph.Editor");
-                    if (utilityType != null)
-                    {
-                        var createMethod = utilityType.GetMethod("CreateNewAsset", BindingFlags.Public | BindingFlags.Static);
-                        if (createMethod != null)
-                        {
-                            createMethod.Invoke(null, new object[] { assetPath });
-                            AssetDatabase.Refresh();
-                            newAsset = AssetDatabase.LoadAssetAtPath<UnityEngine.VFX.VisualEffectAsset>(assetPath);
-                        }
-                    }
-                    
-                    // Fallback: Create a ScriptableObject-based asset
-                    if (newAsset == null)
-                    {
-                        // Try direct creation via internal constructor
-                        var resourceType = System.Type.GetType("UnityEditor.VFX.VisualEffectResource, Unity.VisualEffectGraph.Editor");
-                        if (resourceType != null)
-                        {
-                            var createMethod = resourceType.GetMethod("CreateNewAsset", BindingFlags.Public | BindingFlags.Static | BindingFlags.NonPublic);
-                            if (createMethod != null)
-                            {
-                                var resource = createMethod.Invoke(null, new object[] { assetPath });
-                                AssetDatabase.Refresh();
-                                newAsset = AssetDatabase.LoadAssetAtPath<UnityEngine.VFX.VisualEffectAsset>(assetPath);
-                            }
-                        }
-                    }
-                }
-                catch (Exception ex)
-                {
-                    return new { success = false, message = $"Failed to create VFX asset: {ex.Message}" };
-                }
-            }
-            
-            if (newAsset == null)
-            {
-                return new { success = false, message = "Failed to create VFX asset. Try using a template from list_templates." };
-            }
-            
-            return new 
-            { 
-                success = true, 
-                message = $"Created VFX asset: {assetPath}",
-                data = new
-                {
-                    assetPath = assetPath,
-                    assetName = newAsset.name,
-                    template = template
-                }
-            };
-        }
-        
-        /// <summary>
-        /// Finds VFX template path by name
-        /// </summary>
-        private static string FindVFXTemplate(string templateName)
-        {
-            // Get the actual filesystem path for the VFX Graph package using PackageManager API
-            var packageInfo = UnityEditor.PackageManager.PackageInfo.FindForAssetPath("Packages/com.unity.visualeffectgraph");
-            
-            var searchPaths = new List<string>();
-            
-            if (packageInfo != null)
-            {
-                // Use the resolved path from PackageManager (handles Library/PackageCache paths)
-                searchPaths.Add(System.IO.Path.Combine(packageInfo.resolvedPath, "Editor/Templates"));
-                searchPaths.Add(System.IO.Path.Combine(packageInfo.resolvedPath, "Samples"));
-            }
-            
-            // Also search project-local paths
-            searchPaths.Add("Assets/VFX/Templates");
-            
-            string[] templatePatterns = new[]
-            {
-                $"{templateName}.vfx",
-                $"VFX{templateName}.vfx",
-                $"Simple{templateName}.vfx",
-                $"{templateName}VFX.vfx"
-            };
-            
-            foreach (string basePath in searchPaths)
-            {
-                if (!System.IO.Directory.Exists(basePath)) continue;
-                
-                foreach (string pattern in templatePatterns)
-                {
-                    string[] files = System.IO.Directory.GetFiles(basePath, pattern, System.IO.SearchOption.AllDirectories);
-                    if (files.Length > 0)
-                        return files[0];
-                }
-                
-                // Also search by partial match
-                try
-                {
-                    string[] allVfxFiles = System.IO.Directory.GetFiles(basePath, "*.vfx", System.IO.SearchOption.AllDirectories);
-                    foreach (string file in allVfxFiles)
-                    {
-                        if (System.IO.Path.GetFileNameWithoutExtension(file).ToLower().Contains(templateName.ToLower()))
-                            return file;
-                    }
-                }
-                catch { }
-            }
-            
-            // Search in project assets
-            string[] guids = AssetDatabase.FindAssets("t:VisualEffectAsset " + templateName);
-            if (guids.Length > 0)
-            {
-                return AssetDatabase.GUIDToAssetPath(guids[0]);
-            }
-            
-            return null;
-        }
-        
-        /// <summary>
-        /// Assigns a VFX asset to a VisualEffect component
-        /// </summary>
-        private static object VFXAssignAsset(JObject @params)
-        {
-            VisualEffect vfx = FindVisualEffect(@params);
-            if (vfx == null) return new { success = false, message = "VisualEffect component not found" };
-            
-            string assetPath = @params["assetPath"]?.ToString();
-            if (string.IsNullOrEmpty(assetPath))
-                return new { success = false, message = "assetPath is required" };
-            
-            // Normalize path
-            if (!assetPath.StartsWith("Assets/") && !assetPath.StartsWith("Packages/"))
-                assetPath = "Assets/" + assetPath;
-            if (!assetPath.EndsWith(".vfx"))
-                assetPath += ".vfx";
-            
-            var asset = AssetDatabase.LoadAssetAtPath<UnityEngine.VFX.VisualEffectAsset>(assetPath);
-            if (asset == null)
-            {
-                // Try searching by name
-                string searchName = System.IO.Path.GetFileNameWithoutExtension(assetPath);
-                string[] guids = AssetDatabase.FindAssets($"t:VisualEffectAsset {searchName}");
-                if (guids.Length > 0)
-                {
-                    assetPath = AssetDatabase.GUIDToAssetPath(guids[0]);
-                    asset = AssetDatabase.LoadAssetAtPath<UnityEngine.VFX.VisualEffectAsset>(assetPath);
-                }
-            }
-            
-            if (asset == null)
-                return new { success = false, message = $"VFX asset not found: {assetPath}" };
-            
-            Undo.RecordObject(vfx, "Assign VFX Asset");
-            vfx.visualEffectAsset = asset;
-            EditorUtility.SetDirty(vfx);
-            
-            return new 
-            { 
-                success = true, 
-                message = $"Assigned VFX asset '{asset.name}' to {vfx.gameObject.name}",
-                data = new
-                {
-                    gameObject = vfx.gameObject.name,
-                    assetName = asset.name,
-                    assetPath = assetPath
-                }
-            };
-        }
-        
-        /// <summary>
-        /// Lists available VFX templates
-        /// </summary>
-        private static object VFXListTemplates(JObject @params)
-        {
-            var templates = new List<object>();
-            
-            // Get the actual filesystem path for the VFX Graph package using PackageManager API
-            var packageInfo = UnityEditor.PackageManager.PackageInfo.FindForAssetPath("Packages/com.unity.visualeffectgraph");
-            
-            var searchPaths = new List<string>();
-            
-            if (packageInfo != null)
-            {
-                // Use the resolved path from PackageManager (handles Library/PackageCache paths)
-                searchPaths.Add(System.IO.Path.Combine(packageInfo.resolvedPath, "Editor/Templates"));
-                searchPaths.Add(System.IO.Path.Combine(packageInfo.resolvedPath, "Samples"));
-            }
-            
-            // Also search project-local paths
-            searchPaths.Add("Assets/VFX/Templates");
-            searchPaths.Add("Assets/VFX");
-            
-            // Precompute normalized package path for comparison
-            string normalizedPackagePath = null;
-            if (packageInfo != null)
-            {
-                normalizedPackagePath = packageInfo.resolvedPath.Replace("\\", "/");
-            }
-            
-            // Precompute the Assets base path for converting absolute paths to project-relative
-            string assetsBasePath = Application.dataPath.Replace("\\", "/");
-            
-            foreach (string basePath in searchPaths)
-            {
-                if (!System.IO.Directory.Exists(basePath)) continue;
-                
-                try
-                {
-                    string[] vfxFiles = System.IO.Directory.GetFiles(basePath, "*.vfx", System.IO.SearchOption.AllDirectories);
-                    foreach (string file in vfxFiles)
-                    {
-                        string absolutePath = file.Replace("\\", "/");
-                        string name = System.IO.Path.GetFileNameWithoutExtension(file);
-                        bool isPackage = normalizedPackagePath != null && absolutePath.StartsWith(normalizedPackagePath);
-                        
-                        // Convert absolute path to project-relative path
-                        string projectRelativePath;
-                        if (isPackage)
-                        {
-                            // For package paths, convert to Packages/... format
-                            projectRelativePath = "Packages/" + packageInfo.name + absolutePath.Substring(normalizedPackagePath.Length);
-                        }
-                        else if (absolutePath.StartsWith(assetsBasePath))
-                        {
-                            // For project assets, convert to Assets/... format
-                            projectRelativePath = "Assets" + absolutePath.Substring(assetsBasePath.Length);
-                        }
-                        else
-                        {
-                            // Fallback: use the absolute path if we can't determine the relative path
-                            projectRelativePath = absolutePath;
-                        }
-                        
-                        templates.Add(new { name = name, path = projectRelativePath, source = isPackage ? "package" : "project" });
-                    }
-                }
-                catch { }
-            }
-            
-            // Also search project assets
-            string[] guids = AssetDatabase.FindAssets("t:VisualEffectAsset");
-            foreach (string guid in guids)
-            {
-                string path = AssetDatabase.GUIDToAssetPath(guid);
-                if (!templates.Any(t => ((dynamic)t).path == path))
-                {
-                    string name = System.IO.Path.GetFileNameWithoutExtension(path);
-                    templates.Add(new { name = name, path = path, source = "project" });
-                }
-            }
-            
-            return new 
-            { 
-                success = true, 
-                data = new
-                {
-                    count = templates.Count,
-                    templates = templates
-                }
-            };
-        }
-        
-        /// <summary>
-        /// Lists all VFX assets in the project
-        /// </summary>
-        private static object VFXListAssets(JObject @params)
-        {
-            string searchFolder = @params["folder"]?.ToString();
-            string searchPattern = @params["search"]?.ToString();
-            
-            string filter = "t:VisualEffectAsset";
-            if (!string.IsNullOrEmpty(searchPattern))
-                filter += " " + searchPattern;
-            
-            string[] guids;
-            if (!string.IsNullOrEmpty(searchFolder))
-                guids = AssetDatabase.FindAssets(filter, new[] { searchFolder });
-            else
-                guids = AssetDatabase.FindAssets(filter);
-            
-            var assets = new List<object>();
-            foreach (string guid in guids)
-            {
-                string path = AssetDatabase.GUIDToAssetPath(guid);
-                var asset = AssetDatabase.LoadAssetAtPath<UnityEngine.VFX.VisualEffectAsset>(path);
-                if (asset != null)
-                {
-                    assets.Add(new 
-                    { 
-                        name = asset.name, 
-                        path = path,
-                        guid = guid
-                    });
-                }
-            }
-            
-            return new 
-            { 
-                success = true, 
-                data = new
-                {
-                    count = assets.Count,
-                    assets = assets
-                }
-            };
-        }
-
-        private static object VFXGetInfo(JObject @params)
-        {
-            VisualEffect vfx = FindVisualEffect(@params);
-            if (vfx == null) return new { success = false, message = "VisualEffect not found" };
-
-            return new
-            {
-                success = true,
-                data = new
-                {
-                    gameObject = vfx.gameObject.name,
-                    assetName = vfx.visualEffectAsset?.name ?? "None",
-                    aliveParticleCount = vfx.aliveParticleCount,
-                    culled = vfx.culled,
-                    pause = vfx.pause,
-                    playRate = vfx.playRate,
-                    startSeed = vfx.startSeed
-                }
-            };
-        }
-
-        private static object VFXSetParameter<T>(JObject @params, Action<VisualEffect, string, T> setter)
-        {
-            VisualEffect vfx = FindVisualEffect(@params);
-            if (vfx == null) return new { success = false, message = "VisualEffect not found" };
-
-            string param = @params["parameter"]?.ToString();
-            if (string.IsNullOrEmpty(param)) return new { success = false, message = "Parameter name required" };
-
-            JToken valueToken = @params["value"];
-            if (valueToken == null) return new { success = false, message = "Value required" };
-
-            Undo.RecordObject(vfx, $"Set VFX {param}");
-            T value = valueToken.ToObject<T>();
-            setter(vfx, param, value);
-            EditorUtility.SetDirty(vfx);
-
-            return new { success = true, message = $"Set {param} = {value}" };
-        }
-
-        private static object VFXSetVector(JObject @params, int dims)
-        {
-            VisualEffect vfx = FindVisualEffect(@params);
-            if (vfx == null) return new { success = false, message = "VisualEffect not found" };
-
-            string param = @params["parameter"]?.ToString();
-            if (string.IsNullOrEmpty(param)) return new { success = false, message = "Parameter name required" };
-
-            Vector4 vec = ManageVfxCommon.ParseVector4(@params["value"]);
-            Undo.RecordObject(vfx, $"Set VFX {param}");
-
-            switch (dims)
-            {
-                case 2: vfx.SetVector2(param, new Vector2(vec.x, vec.y)); break;
-                case 3: vfx.SetVector3(param, new Vector3(vec.x, vec.y, vec.z)); break;
-                case 4: vfx.SetVector4(param, vec); break;
-            }
-
-            EditorUtility.SetDirty(vfx);
-            return new { success = true, message = $"Set {param}" };
-        }
-
-        private static object VFXSetColor(JObject @params)
-        {
-            VisualEffect vfx = FindVisualEffect(@params);
-            if (vfx == null) return new { success = false, message = "VisualEffect not found" };
-
-            string param = @params["parameter"]?.ToString();
-            if (string.IsNullOrEmpty(param)) return new { success = false, message = "Parameter name required" };
-
-            Color color = ManageVfxCommon.ParseColor(@params["value"]);
-            Undo.RecordObject(vfx, $"Set VFX Color {param}");
-            vfx.SetVector4(param, new Vector4(color.r, color.g, color.b, color.a));
-            EditorUtility.SetDirty(vfx);
-
-            return new { success = true, message = $"Set color {param}" };
-        }
-
-        private static object VFXSetGradient(JObject @params)
-        {
-            VisualEffect vfx = FindVisualEffect(@params);
-            if (vfx == null) return new { success = false, message = "VisualEffect not found" };
-
-            string param = @params["parameter"]?.ToString();
-            if (string.IsNullOrEmpty(param)) return new { success = false, message = "Parameter name required" };
-
-            Gradient gradient = ManageVfxCommon.ParseGradient(@params["gradient"]);
-            Undo.RecordObject(vfx, $"Set VFX Gradient {param}");
-            vfx.SetGradient(param, gradient);
-            EditorUtility.SetDirty(vfx);
-
-            return new { success = true, message = $"Set gradient {param}" };
-        }
-
-        private static object VFXSetTexture(JObject @params)
-        {
-            VisualEffect vfx = FindVisualEffect(@params);
-            if (vfx == null) return new { success = false, message = "VisualEffect not found" };
-
-            string param = @params["parameter"]?.ToString();
-            string path = @params["texturePath"]?.ToString();
-            if (string.IsNullOrEmpty(param) || string.IsNullOrEmpty(path)) return new { success = false, message = "Parameter and texturePath required" };
-
-            var findInst = new JObject { ["find"] = path };
-            Texture tex = ObjectResolver.Resolve(findInst, typeof(Texture)) as Texture;
-            if (tex == null) return new { success = false, message = $"Texture not found: {path}" };
-
-            Undo.RecordObject(vfx, $"Set VFX Texture {param}");
-            vfx.SetTexture(param, tex);
-            EditorUtility.SetDirty(vfx);
-
-            return new { success = true, message = $"Set texture {param} = {tex.name}" };
-        }
-
-        private static object VFXSetMesh(JObject @params)
-        {
-            VisualEffect vfx = FindVisualEffect(@params);
-            if (vfx == null) return new { success = false, message = "VisualEffect not found" };
-
-            string param = @params["parameter"]?.ToString();
-            string path = @params["meshPath"]?.ToString();
-            if (string.IsNullOrEmpty(param) || string.IsNullOrEmpty(path)) return new { success = false, message = "Parameter and meshPath required" };
-
-            var findInst = new JObject { ["find"] = path };
-            Mesh mesh = ObjectResolver.Resolve(findInst, typeof(Mesh)) as Mesh;
-            if (mesh == null) return new { success = false, message = $"Mesh not found: {path}" };
-
-            Undo.RecordObject(vfx, $"Set VFX Mesh {param}");
-            vfx.SetMesh(param, mesh);
-            EditorUtility.SetDirty(vfx);
-
-            return new { success = true, message = $"Set mesh {param} = {mesh.name}" };
-        }
-
-        private static object VFXSetCurve(JObject @params)
-        {
-            VisualEffect vfx = FindVisualEffect(@params);
-            if (vfx == null) return new { success = false, message = "VisualEffect not found" };
-
-            string param = @params["parameter"]?.ToString();
-            if (string.IsNullOrEmpty(param)) return new { success = false, message = "Parameter name required" };
-
-            AnimationCurve curve = ManageVfxCommon.ParseAnimationCurve(@params["curve"], 1f);
-            Undo.RecordObject(vfx, $"Set VFX Curve {param}");
-            vfx.SetAnimationCurve(param, curve);
-            EditorUtility.SetDirty(vfx);
-
-            return new { success = true, message = $"Set curve {param}" };
-        }
-
-        private static object VFXSendEvent(JObject @params)
-        {
-            VisualEffect vfx = FindVisualEffect(@params);
-            if (vfx == null) return new { success = false, message = "VisualEffect not found" };
-
-            string eventName = @params["eventName"]?.ToString();
-            if (string.IsNullOrEmpty(eventName)) return new { success = false, message = "Event name required" };
-
-            VFXEventAttribute attr = vfx.CreateVFXEventAttribute();
-            if (@params["position"] != null) attr.SetVector3("position", ManageVfxCommon.ParseVector3(@params["position"]));
-            if (@params["velocity"] != null) attr.SetVector3("velocity", ManageVfxCommon.ParseVector3(@params["velocity"]));
-            if (@params["color"] != null) { var c = ManageVfxCommon.ParseColor(@params["color"]); attr.SetVector3("color", new Vector3(c.r, c.g, c.b)); }
-            if (@params["size"] != null) attr.SetFloat("size", @params["size"].ToObject<float>());
-            if (@params["lifetime"] != null) attr.SetFloat("lifetime", @params["lifetime"].ToObject<float>());
-
-            vfx.SendEvent(eventName, attr);
-            return new { success = true, message = $"Sent event '{eventName}'" };
-        }
-
-        private static object VFXControl(JObject @params, string action)
-        {
-            VisualEffect vfx = FindVisualEffect(@params);
-            if (vfx == null) return new { success = false, message = "VisualEffect not found" };
-
-            switch (action)
-            {
-                case "play": vfx.Play(); break;
-                case "stop": vfx.Stop(); break;
-                case "pause": vfx.pause = !vfx.pause; break;
-                case "reinit": vfx.Reinit(); break;
-            }
-
-            return new { success = true, message = $"VFX {action}", isPaused = vfx.pause };
-        }
-
-        private static object VFXSetPlaybackSpeed(JObject @params)
-        {
-            VisualEffect vfx = FindVisualEffect(@params);
-            if (vfx == null) return new { success = false, message = "VisualEffect not found" };
-
-            float rate = @params["playRate"]?.ToObject<float>() ?? 1f;
-            Undo.RecordObject(vfx, "Set VFX Play Rate");
-            vfx.playRate = rate;
-            EditorUtility.SetDirty(vfx);
-
-            return new { success = true, message = $"Set play rate = {rate}" };
-        }
-
-        private static object VFXSetSeed(JObject @params)
-        {
-            VisualEffect vfx = FindVisualEffect(@params);
-            if (vfx == null) return new { success = false, message = "VisualEffect not found" };
-
-            uint seed = @params["seed"]?.ToObject<uint>() ?? 0;
-            bool resetOnPlay = @params["resetSeedOnPlay"]?.ToObject<bool>() ?? true;
-
-            Undo.RecordObject(vfx, "Set VFX Seed");
-            vfx.startSeed = seed;
-            vfx.resetSeedOnPlay = resetOnPlay;
-            EditorUtility.SetDirty(vfx);
-
-            return new { success = true, message = $"Set seed = {seed}" };
-        }
-#endif
 
         #endregion
 
