@@ -5,10 +5,12 @@ using System.Threading.Tasks;
 using MCPForUnity.Editor.Constants;
 using MCPForUnity.Editor.Helpers;
 using MCPForUnity.Editor.Services;
+using MCPForUnity.Editor.Windows.Components.Advanced;
 using MCPForUnity.Editor.Windows.Components.ClientConfig;
 using MCPForUnity.Editor.Windows.Components.Connection;
-using MCPForUnity.Editor.Windows.Components.Settings;
+using MCPForUnity.Editor.Windows.Components.Resources;
 using MCPForUnity.Editor.Windows.Components.Tools;
+using MCPForUnity.Editor.Windows.Components.Validation;
 using UnityEditor;
 using UnityEditor.UIElements;
 using UnityEngine;
@@ -19,26 +21,43 @@ namespace MCPForUnity.Editor.Windows
     public class MCPForUnityEditorWindow : EditorWindow
     {
         // Section controllers
-        private McpSettingsSection settingsSection;
         private McpConnectionSection connectionSection;
         private McpClientConfigSection clientConfigSection;
+        private McpValidationSection validationSection;
+        private McpAdvancedSection advancedSection;
         private McpToolsSection toolsSection;
+        private McpResourcesSection resourcesSection;
 
-        private ToolbarToggle settingsTabToggle;
+        // UI Elements
+        private Label versionLabel;
+        private VisualElement updateNotification;
+        private Label updateNotificationText;
+
+        private ToolbarToggle clientsTabToggle;
+        private ToolbarToggle validationTabToggle;
+        private ToolbarToggle advancedTabToggle;
         private ToolbarToggle toolsTabToggle;
-        private VisualElement settingsPanel;
+        private ToolbarToggle resourcesTabToggle;
+        private VisualElement clientsPanel;
+        private VisualElement validationPanel;
+        private VisualElement advancedPanel;
         private VisualElement toolsPanel;
+        private VisualElement resourcesPanel;
 
         private static readonly HashSet<MCPForUnityEditorWindow> OpenWindows = new();
         private bool guiCreated = false;
         private bool toolsLoaded = false;
+        private bool resourcesLoaded = false;
         private double lastRefreshTime = 0;
         private const double RefreshDebounceSeconds = 0.5;
 
         private enum ActivePanel
         {
-            Settings,
-            Tools
+            Clients,
+            Validation,
+            Advanced,
+            Tools,
+            Resources
         }
 
         internal static void CloseAllWindows()
@@ -53,7 +72,7 @@ namespace MCPForUnity.Editor.Windows
         public static void ShowWindow()
         {
             var window = GetWindow<MCPForUnityEditorWindow>("MCP For Unity");
-            window.minSize = new Vector2(500, 600);
+            window.minSize = new Vector2(500, 340);
         }
 
         // Helper to check and manage open windows from other classes
@@ -124,20 +143,43 @@ namespace MCPForUnity.Editor.Windows
                 rootVisualElement.styleSheets.Add(commonStyleSheet);
             }
 
-            settingsPanel = rootVisualElement.Q<VisualElement>("settings-panel");
-            toolsPanel = rootVisualElement.Q<VisualElement>("tools-panel");
-            var settingsContainer = rootVisualElement.Q<VisualElement>("settings-container");
-            var toolsContainer = rootVisualElement.Q<VisualElement>("tools-container");
+            // Cache UI elements
+            versionLabel = rootVisualElement.Q<Label>("version-label");
+            updateNotification = rootVisualElement.Q<VisualElement>("update-notification");
+            updateNotificationText = rootVisualElement.Q<Label>("update-notification-text");
 
-            if (settingsPanel == null || toolsPanel == null)
+            clientsPanel = rootVisualElement.Q<VisualElement>("clients-panel");
+            validationPanel = rootVisualElement.Q<VisualElement>("validation-panel");
+            advancedPanel = rootVisualElement.Q<VisualElement>("advanced-panel");
+            toolsPanel = rootVisualElement.Q<VisualElement>("tools-panel");
+            resourcesPanel = rootVisualElement.Q<VisualElement>("resources-panel");
+            var clientsContainer = rootVisualElement.Q<VisualElement>("clients-container");
+            var validationContainer = rootVisualElement.Q<VisualElement>("validation-container");
+            var advancedContainer = rootVisualElement.Q<VisualElement>("advanced-container");
+            var toolsContainer = rootVisualElement.Q<VisualElement>("tools-container");
+            var resourcesContainer = rootVisualElement.Q<VisualElement>("resources-container");
+
+            if (clientsPanel == null || validationPanel == null || advancedPanel == null || toolsPanel == null || resourcesPanel == null)
             {
                 McpLog.Error("Failed to find tab panels in UXML");
                 return;
             }
 
-            if (settingsContainer == null)
+            if (clientsContainer == null)
             {
-                McpLog.Error("Failed to find settings-container in UXML");
+                McpLog.Error("Failed to find clients-container in UXML");
+                return;
+            }
+
+            if (validationContainer == null)
+            {
+                McpLog.Error("Failed to find validation-container in UXML");
+                return;
+            }
+
+            if (advancedContainer == null)
+            {
+                McpLog.Error("Failed to find advanced-container in UXML");
                 return;
             }
 
@@ -147,22 +189,16 @@ namespace MCPForUnity.Editor.Windows
                 return;
             }
 
-            SetupTabs();
-
-            // Load and initialize Settings section
-            var settingsTree = AssetDatabase.LoadAssetAtPath<VisualTreeAsset>(
-                $"{basePath}/Editor/Windows/Components/Settings/McpSettingsSection.uxml"
-            );
-            if (settingsTree != null)
+            if (resourcesContainer == null)
             {
-                var settingsRoot = settingsTree.Instantiate();
-                settingsContainer.Add(settingsRoot);
-                settingsSection = new McpSettingsSection(settingsRoot);
-                settingsSection.OnGitUrlChanged += () =>
-                    clientConfigSection?.UpdateManualConfiguration();
-                settingsSection.OnHttpServerCommandUpdateRequested += () =>
-                    connectionSection?.UpdateHttpServerCommandDisplay();
+                McpLog.Error("Failed to find resources-container in UXML");
+                return;
             }
+
+            // Initialize version label
+            UpdateVersionLabel(EditorPrefs.GetBool(EditorPrefKeys.UseBetaServer, true));
+
+            SetupTabs();
 
             // Load and initialize Connection section
             var connectionTree = AssetDatabase.LoadAssetAtPath<VisualTreeAsset>(
@@ -171,7 +207,7 @@ namespace MCPForUnity.Editor.Windows
             if (connectionTree != null)
             {
                 var connectionRoot = connectionTree.Instantiate();
-                settingsContainer.Add(connectionRoot);
+                clientsContainer.Add(connectionRoot);
                 connectionSection = new McpConnectionSection(connectionRoot);
                 connectionSection.OnManualConfigUpdateRequested += () =>
                     clientConfigSection?.UpdateManualConfiguration();
@@ -186,8 +222,51 @@ namespace MCPForUnity.Editor.Windows
             if (clientConfigTree != null)
             {
                 var clientConfigRoot = clientConfigTree.Instantiate();
-                settingsContainer.Add(clientConfigRoot);
+                clientsContainer.Add(clientConfigRoot);
                 clientConfigSection = new McpClientConfigSection(clientConfigRoot);
+
+                // Wire up transport mismatch detection: when client status is checked,
+                // update the connection section's warning banner if there's a mismatch
+                clientConfigSection.OnClientTransportDetected += (clientName, transport) =>
+                    connectionSection?.UpdateTransportMismatchWarning(clientName, transport);
+            }
+
+            // Load and initialize Validation section
+            var validationTree = AssetDatabase.LoadAssetAtPath<VisualTreeAsset>(
+                $"{basePath}/Editor/Windows/Components/Validation/McpValidationSection.uxml"
+            );
+            if (validationTree != null)
+            {
+                var validationRoot = validationTree.Instantiate();
+                validationContainer.Add(validationRoot);
+                validationSection = new McpValidationSection(validationRoot);
+            }
+
+            // Load and initialize Advanced section
+            var advancedTree = AssetDatabase.LoadAssetAtPath<VisualTreeAsset>(
+                $"{basePath}/Editor/Windows/Components/Advanced/McpAdvancedSection.uxml"
+            );
+            if (advancedTree != null)
+            {
+                var advancedRoot = advancedTree.Instantiate();
+                advancedContainer.Add(advancedRoot);
+                advancedSection = new McpAdvancedSection(advancedRoot);
+
+                // Wire up events from Advanced section
+                advancedSection.OnGitUrlChanged += () =>
+                    clientConfigSection?.UpdateManualConfiguration();
+                advancedSection.OnHttpServerCommandUpdateRequested += () =>
+                    connectionSection?.UpdateHttpServerCommandDisplay();
+                advancedSection.OnTestConnectionRequested += async () =>
+                {
+                    if (connectionSection != null)
+                        await connectionSection.VerifyBridgeConnectionAsync();
+                };
+                advancedSection.OnBetaModeChanged += UpdateVersionLabel;
+
+                // Wire up health status updates from Connection to Advanced
+                connectionSection?.SetHealthStatusUpdateCallback((isHealthy, statusText) =>
+                    advancedSection?.UpdateHealthStatus(isHealthy, statusText));
             }
 
             // Load and initialize Tools section
@@ -210,10 +289,48 @@ namespace MCPForUnity.Editor.Windows
                 McpLog.Warn("Failed to load tools section UXML. Tool configuration will be unavailable.");
             }
 
+            // Load and initialize Resources section
+            var resourcesTree = AssetDatabase.LoadAssetAtPath<VisualTreeAsset>(
+                $"{basePath}/Editor/Windows/Components/Resources/McpResourcesSection.uxml"
+            );
+            if (resourcesTree != null)
+            {
+                var resourcesRoot = resourcesTree.Instantiate();
+                resourcesContainer.Add(resourcesRoot);
+                resourcesSection = new McpResourcesSection(resourcesRoot);
+
+                if (resourcesTabToggle != null && resourcesTabToggle.value)
+                {
+                    EnsureResourcesLoaded();
+                }
+            }
+            else
+            {
+                McpLog.Warn("Failed to load resources section UXML. Resource configuration will be unavailable.");
+            }
+
+            // Apply .section-last class to last section in each stack
+            // (Unity UI Toolkit doesn't support :last-child pseudo-class)
+            ApplySectionLastClasses();
+
             guiCreated = true;
 
             // Initial updates
             RefreshAllData();
+        }
+
+        private void UpdateVersionLabel(bool useBetaServer)
+        {
+            if (versionLabel == null)
+            {
+                return;
+            }
+
+            string version = AssetPathUtility.GetPackageVersion();
+            versionLabel.text = useBetaServer ? $"v{version} β" : $"v{version}";
+            versionLabel.tooltip = useBetaServer
+                ? "Beta server mode - fetching pre-release server versions from PyPI"
+                : $"MCP For Unity v{version}";
         }
 
         private void EnsureToolsLoaded()
@@ -232,6 +349,50 @@ namespace MCPForUnity.Editor.Windows
             toolsSection.Refresh();
         }
 
+        private void EnsureResourcesLoaded()
+        {
+            if (resourcesLoaded)
+            {
+                return;
+            }
+
+            if (resourcesSection == null)
+            {
+                return;
+            }
+
+            resourcesLoaded = true;
+            resourcesSection.Refresh();
+        }
+
+        /// <summary>
+        /// Applies the .section-last class to the last .section element in each .section-stack container.
+        /// This is a workaround for Unity UI Toolkit not supporting the :last-child pseudo-class.
+        /// </summary>
+        private void ApplySectionLastClasses()
+        {
+            var sectionStacks = rootVisualElement.Query<VisualElement>(className: "section-stack").ToList();
+            foreach (var stack in sectionStacks)
+            {
+                var sections = stack.Children().Where(c => c.ClassListContains("section")).ToList();
+                if (sections.Count > 0)
+                {
+                    // Remove class from all sections first (in case of refresh)
+                    foreach (var section in sections)
+                    {
+                        section.RemoveFromClassList("section-last");
+                    }
+                    // Add class to the last section
+                    sections[sections.Count - 1].AddToClassList("section-last");
+                }
+            }
+        }
+
+        // Throttle OnEditorUpdate to avoid per-frame overhead (GitHub issue #577).
+        // Connection status polling every frame caused expensive network checks 60+ times/sec.
+        private double _lastEditorUpdateTime;
+        private const double EditorUpdateIntervalSeconds = 2.0;
+
         private void OnEnable()
         {
             EditorApplication.update += OnEditorUpdate;
@@ -244,6 +405,7 @@ namespace MCPForUnity.Editor.Windows
             OpenWindows.Remove(this);
             guiCreated = false;
             toolsLoaded = false;
+            resourcesLoaded = false;
         }
 
         private void OnFocus()
@@ -257,6 +419,16 @@ namespace MCPForUnity.Editor.Windows
 
         private void OnEditorUpdate()
         {
+            // Throttle to 2-second intervals instead of every frame.
+            // This prevents the expensive IsLocalHttpServerReachable() socket checks from running
+            // 60+ times per second, which caused main thread blocking and GC pressure.
+            double now = EditorApplication.timeSinceStartup;
+            if (now - _lastEditorUpdateTime < EditorUpdateIntervalSeconds)
+            {
+                return;
+            }
+            _lastEditorUpdateTime = now;
+
             if (rootVisualElement == null || rootVisualElement.childCount == 0)
                 return;
 
@@ -280,32 +452,45 @@ namespace MCPForUnity.Editor.Windows
                 _ = connectionSection?.VerifyBridgeConnectionAsync();
             }
 
-            settingsSection?.UpdatePathOverrides();
+            advancedSection?.UpdatePathOverrides();
             clientConfigSection?.RefreshSelectedClient();
         }
 
         private void SetupTabs()
         {
-            settingsTabToggle = rootVisualElement.Q<ToolbarToggle>("settings-tab");
+            clientsTabToggle = rootVisualElement.Q<ToolbarToggle>("clients-tab");
+            validationTabToggle = rootVisualElement.Q<ToolbarToggle>("validation-tab");
+            advancedTabToggle = rootVisualElement.Q<ToolbarToggle>("advanced-tab");
             toolsTabToggle = rootVisualElement.Q<ToolbarToggle>("tools-tab");
+            resourcesTabToggle = rootVisualElement.Q<ToolbarToggle>("resources-tab");
 
-            settingsPanel?.RemoveFromClassList("hidden");
+            clientsPanel?.RemoveFromClassList("hidden");
+            validationPanel?.RemoveFromClassList("hidden");
+            advancedPanel?.RemoveFromClassList("hidden");
             toolsPanel?.RemoveFromClassList("hidden");
+            resourcesPanel?.RemoveFromClassList("hidden");
 
-            if (settingsTabToggle != null)
+            if (clientsTabToggle != null)
             {
-                settingsTabToggle.RegisterValueChangedCallback(evt =>
+                clientsTabToggle.RegisterValueChangedCallback(evt =>
                 {
-                    if (!evt.newValue)
-                    {
-                        if (toolsTabToggle != null && !toolsTabToggle.value)
-                        {
-                            settingsTabToggle.SetValueWithoutNotify(true);
-                        }
-                        return;
-                    }
+                    if (evt.newValue) SwitchPanel(ActivePanel.Clients);
+                });
+            }
 
-                    SwitchPanel(ActivePanel.Settings);
+            if (validationTabToggle != null)
+            {
+                validationTabToggle.RegisterValueChangedCallback(evt =>
+                {
+                    if (evt.newValue) SwitchPanel(ActivePanel.Validation);
+                });
+            }
+
+            if (advancedTabToggle != null)
+            {
+                advancedTabToggle.RegisterValueChangedCallback(evt =>
+                {
+                    if (evt.newValue) SwitchPanel(ActivePanel.Advanced);
                 });
             }
 
@@ -313,23 +498,22 @@ namespace MCPForUnity.Editor.Windows
             {
                 toolsTabToggle.RegisterValueChangedCallback(evt =>
                 {
-                    if (!evt.newValue)
-                    {
-                        if (settingsTabToggle != null && !settingsTabToggle.value)
-                        {
-                            toolsTabToggle.SetValueWithoutNotify(true);
-                        }
-                        return;
-                    }
-
-                    SwitchPanel(ActivePanel.Tools);
+                    if (evt.newValue) SwitchPanel(ActivePanel.Tools);
                 });
             }
 
-            var savedPanel = EditorPrefs.GetString(EditorPrefKeys.EditorWindowActivePanel, ActivePanel.Settings.ToString());
+            if (resourcesTabToggle != null)
+            {
+                resourcesTabToggle.RegisterValueChangedCallback(evt =>
+                {
+                    if (evt.newValue) SwitchPanel(ActivePanel.Resources);
+                });
+            }
+
+            var savedPanel = EditorPrefs.GetString(EditorPrefKeys.EditorWindowActivePanel, ActivePanel.Clients.ToString());
             if (!Enum.TryParse(savedPanel, out ActivePanel initialPanel))
             {
-                initialPanel = ActivePanel.Settings;
+                initialPanel = ActivePanel.Clients;
             }
 
             SwitchPanel(initialPanel);
@@ -337,25 +521,60 @@ namespace MCPForUnity.Editor.Windows
 
         private void SwitchPanel(ActivePanel panel)
         {
-            bool showSettings = panel == ActivePanel.Settings;
-
-            if (settingsPanel != null)
+            // Hide all panels
+            if (clientsPanel != null)
             {
-                settingsPanel.style.display = showSettings ? DisplayStyle.Flex : DisplayStyle.None;
+                clientsPanel.style.display = DisplayStyle.None;
+            }
+
+            if (validationPanel != null)
+            {
+                validationPanel.style.display = DisplayStyle.None;
+            }
+
+            if (advancedPanel != null)
+            {
+                advancedPanel.style.display = DisplayStyle.None;
             }
 
             if (toolsPanel != null)
             {
-                toolsPanel.style.display = showSettings ? DisplayStyle.None : DisplayStyle.Flex;
+                toolsPanel.style.display = DisplayStyle.None;
             }
 
-            settingsTabToggle?.SetValueWithoutNotify(showSettings);
-            toolsTabToggle?.SetValueWithoutNotify(!showSettings);
-
-            if (!showSettings)
+            if (resourcesPanel != null)
             {
-                EnsureToolsLoaded();
+                resourcesPanel.style.display = DisplayStyle.None;
             }
+
+            // Show selected panel
+            switch (panel)
+            {
+                case ActivePanel.Clients:
+                    if (clientsPanel != null) clientsPanel.style.display = DisplayStyle.Flex;
+                    break;
+                case ActivePanel.Validation:
+                    if (validationPanel != null) validationPanel.style.display = DisplayStyle.Flex;
+                    break;
+                case ActivePanel.Advanced:
+                    if (advancedPanel != null) advancedPanel.style.display = DisplayStyle.Flex;
+                    break;
+                case ActivePanel.Tools:
+                    if (toolsPanel != null) toolsPanel.style.display = DisplayStyle.Flex;
+                    EnsureToolsLoaded();
+                    break;
+                case ActivePanel.Resources:
+                    if (resourcesPanel != null) resourcesPanel.style.display = DisplayStyle.Flex;
+                    EnsureResourcesLoaded();
+                    break;
+            }
+
+            // Update toggle states
+            clientsTabToggle?.SetValueWithoutNotify(panel == ActivePanel.Clients);
+            validationTabToggle?.SetValueWithoutNotify(panel == ActivePanel.Validation);
+            advancedTabToggle?.SetValueWithoutNotify(panel == ActivePanel.Advanced);
+            toolsTabToggle?.SetValueWithoutNotify(panel == ActivePanel.Tools);
+            resourcesTabToggle?.SetValueWithoutNotify(panel == ActivePanel.Resources);
 
             EditorPrefs.SetString(EditorPrefKeys.EditorWindowActivePanel, panel.ToString());
         }

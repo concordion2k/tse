@@ -7,7 +7,6 @@
                 <ui:Label text="Client:" class="setting-label" />
                 <ui:DropdownField name="client-dropdown" class="setting-dropdown-inline" />
             </ui:VisualElement>
-            <ui:Button name="configure-all-button" text="Configure All Detected Clients" class="secondary-button" />
             <ui:VisualElement class="setting-row">
                 <ui:VisualElement class="status-container">
                     <ui:VisualElement name="client-status-indicator" class="status-dot" />
@@ -20,7 +19,7 @@
                 <ui:TextField name="claude-cli-path" readonly="true" class="path-display-field" />
                 <ui:Button name="browse-claude-button" text="Browse" class="icon-button" />
             </ui:VisualElement>
-            <ui:Foldout name="manual-config-foldout" text="Manual Configuration" class="manual-config-foldout">
+            <ui:Foldout name="manual-config-foldout" text="Manual Configuration" value="false" class="manual-config-foldout">
                 <ui:VisualElement class="manual-config-content">
                     <ui:Label text="Config Path:" class="config-label" />
                     <ui:VisualElement class="path-row">
@@ -37,6 +36,7 @@
                     <ui:Label name="installation-steps" class="installation-steps" />
                 </ui:VisualElement>
             </ui:Foldout>
+            <ui:Button name="configure-all-button" text="Configure All Detected Clients" class="secondary-button" style="width: auto; padding-left: 12px; padding-right: 12px;" />
         </ui:VisualElement>
     </ui:VisualElement>
 </ui:UXML>

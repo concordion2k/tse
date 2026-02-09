@@ -1,0 +1,74 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: c53d3eb49b7ed4ec38f04a74817142f9, type: 3}
+  m_Name: Level1 1_Settings
+  m_EditorClassIdentifier: Assembly-CSharp::LevelDesigner.LevelSettings
+  levelName: Prototype Level
+  description: 
+  pathData: {fileID: 11400000, guid: 3e87b851be92a41e6adb9cf4a0b00b09, type: 2}
+  environmentType: 0
+  skyboxMaterial: {fileID: 0}
+  terrainPrefab: {fileID: 0}
+  terrainHeightOffset: -50
+  ambientLightColor: {r: 0.2, g: 0.2, b: 0.3, a: 1}
+  fogDensity: 0
+  fogColor: {r: 0.5, g: 0.5, b: 0.5, a: 1}
+  enemyPlacements:
+  - enemyPrefab: {fileID: 1000000000000000001, guid: 1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d, type: 3}
+    pathDistance: 40
+    offsetFromPath: {x: -5.118245, y: -6.542563, z: 0.9460435}
+    scaleMultiplier: 1
+    useFormation: 0
+    formation: 0
+    formationCount: 3
+    formationSpacing: 5
+  - enemyPrefab: {fileID: 1000000000000000001, guid: 1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d, type: 3}
+    pathDistance: 90
+    offsetFromPath: {x: 0.2666478, y: 11.172352, z: 0.66290087}
+    scaleMultiplier: 1
+    useFormation: 0
+    formation: 0
+    formationCount: 3
+    formationSpacing: 5
+  - enemyPrefab: {fileID: 1000000000000000003, guid: 3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f, type: 3}
+    pathDistance: 165
+    offsetFromPath: {x: -13.540973, y: 13.368851, z: 2.4602525}
+    scaleMultiplier: 1
+    useFormation: 0
+    formation: 0
+    formationCount: 3
+    formationSpacing: 5
+  - enemyPrefab: {fileID: 1000000000000000001, guid: 1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d, type: 3}
+    pathDistance: 230
+    offsetFromPath: {x: 29.73702, y: -0.19289018, z: 6.4690742}
+    scaleMultiplier: 1
+    useFormation: 0
+    formation: 0
+    formationCount: 3
+    formationSpacing: 5
+  - enemyPrefab: {fileID: 1000000000000000001, guid: 1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d, type: 3}
+    pathDistance: 355
+    offsetFromPath: {x: -19.110851, y: 1.5372825, z: -2.239631}
+    scaleMultiplier: 1
+    useFormation: 0
+    formation: 0
+    formationCount: 3
+    formationSpacing: 5
+  - enemyPrefab: {fileID: 1000000000000000001, guid: 1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d, type: 3}
+    pathDistance: 450
+    offsetFromPath: {x: 19.964996, y: -0.56383306, z: 2.0058267}
+    scaleMultiplier: 1
+    useFormation: 0
+    formation: 0
+    formationCount: 3
+    formationSpacing: 5
+  musicTrack: {fileID: 0}

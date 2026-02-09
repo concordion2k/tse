@@ -6,6 +6,7 @@ using System.Net.WebSockets;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
+using MCPForUnity.Editor.Constants;
 using MCPForUnity.Editor.Helpers;
 using MCPForUnity.Editor.Services;
 using MCPForUnity.Editor.Services.Transport;
@@ -49,12 +50,14 @@ namespace MCPForUnity.Editor.Services.Transport.Transports
         private string _sessionId;
         private string _projectHash;
         private string _projectName;
+        private string _projectPath;
         private string _unityVersion;
         private TimeSpan _keepAliveInterval = DefaultKeepAliveInterval;
         private TimeSpan _socketKeepAliveInterval = DefaultKeepAliveInterval;
         private volatile bool _isConnected;
         private int _isReconnectingFlag;
         private TransportState _state = TransportState.Disconnected(TransportDisplayName, "Transport not started");
+        private string _apiKey;
         private bool _disposed;
 
         public WebSocketTransportClient(IToolDiscoveryService toolDiscoveryService = null)
@@ -79,6 +82,24 @@ namespace MCPForUnity.Editor.Services.Transport.Transports
             _projectName = ProjectIdentityUtility.GetProjectName();
             _projectHash = ProjectIdentityUtility.GetProjectHash();
             _unityVersion = Application.unityVersion;
+            _apiKey = HttpEndpointUtility.IsRemoteScope()
+                ? EditorPrefs.GetString(EditorPrefKeys.ApiKey, string.Empty)
+                : string.Empty;
+
+            // Get project root path (strip /Assets from dataPath) for focus nudging
+            string dataPath = Application.dataPath;
+            if (!string.IsNullOrEmpty(dataPath))
+            {
+                string normalized = dataPath.TrimEnd('/', '\\');
+                if (string.Equals(System.IO.Path.GetFileName(normalized), "Assets", StringComparison.Ordinal))
+                {
+                    _projectPath = System.IO.Path.GetDirectoryName(normalized) ?? normalized;
+                }
+                else
+                {
+                    _projectPath = normalized;  // Fallback if path doesn't end with Assets
+                }
+            }
 
             await StopAsync();
 
@@ -198,13 +219,21 @@ namespace MCPForUnity.Editor.Services.Transport.Transports
             _socket = new ClientWebSocket();
             _socket.Options.KeepAliveInterval = _socketKeepAliveInterval;
 
+            // Add API key header if configured (for remote-hosted mode)
+            if (!string.IsNullOrEmpty(_apiKey))
+            {
+                _socket.Options.SetRequestHeader(AuthConstants.ApiKeyHeader, _apiKey);
+            }
+
             try
             {
                 await _socket.ConnectAsync(_endpointUri, connectionToken).ConfigureAwait(false);
             }
             catch (Exception ex)
             {
-                McpLog.Error($"[WebSocket] Connection failed: {ex.Message}");
+                string errorMsg = "Connection failed. Check that the server URL is correct, the server is running, and your API key (if required) is valid.";
+                McpLog.Error($"[WebSocket] {errorMsg} (Detail: {ex.Message})");
+                _state = TransportState.Disconnected(TransportDisplayName, errorMsg);
                 return false;
             }
 
@@ -216,7 +245,9 @@ namespace MCPForUnity.Editor.Services.Transport.Transports
             }
             catch (Exception ex)
             {
-                McpLog.Error($"[WebSocket] Registration failed: {ex.Message}");
+                string regMsg = $"Registration with server failed: {ex.Message}";
+                McpLog.Error($"[WebSocket] {regMsg}");
+                _state = TransportState.Disconnected(TransportDisplayName, regMsg);
                 return false;
             }
 
@@ -419,7 +450,7 @@ namespace MCPForUnity.Editor.Services.Transport.Transports
                 _sessionId = newSessionId;
                 ProjectIdentityUtility.SetSessionId(_sessionId);
                 _state = TransportState.Connected(TransportDisplayName, sessionId: _sessionId, details: _endpointUri.ToString());
-                McpLog.Info($"[WebSocket] Registered with session ID: {_sessionId}");
+                McpLog.Info($"[WebSocket] Registered with session ID: {_sessionId}", false);
 
                 await SendRegisterToolsAsync(token).ConfigureAwait(false);
             }
@@ -432,7 +463,7 @@ namespace MCPForUnity.Editor.Services.Transport.Transports
             token.ThrowIfCancellationRequested();
             var tools = await GetEnabledToolsOnMainThreadAsync(token).ConfigureAwait(false);
             token.ThrowIfCancellationRequested();
-            McpLog.Info($"[WebSocket] Preparing to register {tools.Count} tool(s) with the bridge.");
+            McpLog.Info($"[WebSocket] Preparing to register {tools.Count} tool(s) with the bridge.", false);
             var toolsArray = new JArray();
 
             foreach (var tool in tools)
@@ -472,7 +503,7 @@ namespace MCPForUnity.Editor.Services.Transport.Transports
             };
 
             await SendJsonAsync(payload, token).ConfigureAwait(false);
-            McpLog.Info($"[WebSocket] Sent {tools.Count} tools registration");
+            McpLog.Info($"[WebSocket] Sent {tools.Count} tools registration", false);
         }
 
         private async Task HandleExecuteAsync(JObject payload, CancellationToken token)
@@ -576,7 +607,8 @@ namespace MCPForUnity.Editor.Services.Transport.Transports
                 // session_id is now server-authoritative; omitted here or sent as null
                 ["project_name"] = _projectName,
                 ["project_hash"] = _projectHash,
-                ["unity_version"] = _unityVersion
+                ["unity_version"] = _unityVersion,
+                ["project_path"] = _projectPath
             };
 
             await SendJsonAsync(registerPayload, token).ConfigureAwait(false);
@@ -587,6 +619,7 @@ namespace MCPForUnity.Editor.Services.Transport.Transports
             var payload = new JObject
             {
                 ["type"] = "pong",
+                ["session_id"] = _sessionId  // Include session ID for server-side tracking
             };
             return SendJsonAsync(payload, token);
         }
@@ -620,6 +653,10 @@ namespace MCPForUnity.Editor.Services.Transport.Transports
 
         private async Task HandleSocketClosureAsync(string reason)
         {
+            // Capture stack trace for debugging disconnection triggers
+            var stackTrace = new System.Diagnostics.StackTrace(true);
+            McpLog.Debug($"[WebSocket] HandleSocketClosureAsync called. Reason: {reason}\nStack trace:\n{stackTrace}");
+
             if (_lifecycleCts == null || _lifecycleCts.IsCancellationRequested)
             {
                 return;
@@ -662,7 +699,7 @@ namespace MCPForUnity.Editor.Services.Transport.Transports
                     {
                         _state = TransportState.Connected(TransportDisplayName, sessionId: _sessionId, details: _endpointUri.ToString());
                         _isConnected = true;
-                        McpLog.Info("[WebSocket] Reconnected to MCP server");
+                        McpLog.Info("[WebSocket] Reconnected to MCP server", false);
                         return;
                     }
                 }
@@ -682,16 +719,23 @@ namespace MCPForUnity.Editor.Services.Transport.Transports
                 throw new InvalidOperationException($"Invalid MCP base URL: {baseUrl}");
             }
 
-            string scheme = httpUri.Scheme.Equals("https", StringComparison.OrdinalIgnoreCase) ? "wss" : "ws";
-            string builder = $"{scheme}://{httpUri.Authority}";
-            if (!string.IsNullOrEmpty(httpUri.AbsolutePath) && httpUri.AbsolutePath != "/")
+            // Replace bind-only addresses with localhost for client connections
+            // 0.0.0.0 and :: are only valid for server binding, not client connections
+            string host = httpUri.Host;
+            if (host == "0.0.0.0" || host == "::")
             {
-                builder += httpUri.AbsolutePath.TrimEnd('/');
+                McpLog.Warn($"[WebSocket] Base URL host '{host}' is bind-only; using 'localhost' for client connection.");
+                host = "localhost";
             }
 
-            builder += "/hub/plugin";
+            var builder = new UriBuilder(httpUri)
+            {
+                Scheme = httpUri.Scheme.Equals("https", StringComparison.OrdinalIgnoreCase) ? "wss" : "ws",
+                Host = host,
+                Path = httpUri.AbsolutePath.TrimEnd('/') + "/hub/plugin"
+            };
 
-            return new Uri(builder);
+            return builder.Uri;
         }
     }
 }

@@ -10,6 +10,7 @@ namespace MCPForUnity.Editor.Models
         public string linuxConfigPath;
         public string configStatus;
         public McpStatus status = McpStatus.NotConfigured;
+        public ConfiguredTransport configuredTransport = ConfiguredTransport.Unknown;
 
         // Capability flags/config for JSON-based configurators
         public bool IsVsCodeLayout; // Whether the config file follows VS Code layout (env object at root)
@@ -33,7 +34,7 @@ namespace MCPForUnity.Editor.Models
                 McpStatus.NoResponse => "No Response",
                 McpStatus.UnsupportedOS => "Unsupported OS",
                 McpStatus.MissingConfig => "Missing MCPForUnity Config",
-                McpStatus.Error => configStatus.StartsWith("Error:") ? configStatus : "Error",
+                McpStatus.Error => configStatus?.StartsWith("Error:") == true ? configStatus : "Error",
                 _ => "Unknown",
             };
         }

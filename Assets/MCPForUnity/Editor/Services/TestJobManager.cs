@@ -50,6 +50,7 @@ namespace MCPForUnity.Editor.Services
         // Keep this small to avoid ballooning payloads during polling.
         private const int FailureCap = 25;
         private const long StuckThresholdMs = 60_000;
+        private const long InitializationTimeoutMs = 15_000; // 15 seconds to call OnRunStarted, else fail
         private const int MaxJobsToKeep = 10;
         private const long MinPersistIntervalMs = 1000; // Throttle persistence to reduce overhead
 
@@ -82,6 +83,38 @@ namespace MCPForUnity.Editor.Services
                     return !string.IsNullOrEmpty(_currentJobId);
                 }
             }
+        }
+
+        /// <summary>
+        /// Force-clears any stuck or orphaned test job. Call this when tests get stuck due to
+        /// assembly reloads or other interruptions.
+        /// </summary>
+        /// <returns>True if a job was cleared, false if no running job exists.</returns>
+        public static bool ClearStuckJob()
+        {
+            bool cleared = false;
+            lock (LockObj)
+            {
+                if (string.IsNullOrEmpty(_currentJobId))
+                {
+                    return false;
+                }
+
+                if (Jobs.TryGetValue(_currentJobId, out var job) && job.Status == TestJobStatus.Running)
+                {
+                    long now = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+                    job.Status = TestJobStatus.Failed;
+                    job.Error = "Job cleared manually (stuck or orphaned)";
+                    job.FinishedUnixMs = now;
+                    job.LastUpdateUnixMs = now;
+                    McpLog.Warn($"[TestJobManager] Manually cleared stuck job {_currentJobId}");
+                    cleared = true;
+                }
+
+                _currentJobId = null;
+            }
+            PersistToSessionState(force: true);
+            return cleared;
         }
 
         private sealed class PersistedState
@@ -177,6 +210,26 @@ namespace MCPForUnity.Editor.Services
                     if (!string.IsNullOrEmpty(_currentJobId) && !Jobs.ContainsKey(_currentJobId))
                     {
                         _currentJobId = null;
+                    }
+
+                    // Detect and clean up stale "running" jobs that were orphaned by domain reload.
+                    // After a domain reload, TestRunStatus resets to not-running, but _currentJobId
+                    // may still be set. If the job hasn't been updated recently, it's likely orphaned.
+                    if (!string.IsNullOrEmpty(_currentJobId) && Jobs.TryGetValue(_currentJobId, out var currentJob))
+                    {
+                        if (currentJob.Status == TestJobStatus.Running)
+                        {
+                            long now = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+                            long staleCutoffMs = 5 * 60 * 1000; // 5 minutes
+                            if (now - currentJob.LastUpdateUnixMs > staleCutoffMs)
+                            {
+                                McpLog.Warn($"[TestJobManager] Clearing stale job {_currentJobId} (last update {(now - currentJob.LastUpdateUnixMs) / 1000}s ago)");
+                                currentJob.Status = TestJobStatus.Failed;
+                                currentJob.Error = "Job orphaned after domain reload";
+                                currentJob.FinishedUnixMs = now;
+                                _currentJobId = null;
+                            }
+                        }
                     }
                 }
             }
@@ -422,10 +475,45 @@ namespace MCPForUnity.Editor.Services
             {
                 return null;
             }
+
+            TestJob jobToReturn = null;
+            bool shouldPersist = false;
             lock (LockObj)
             {
-                return Jobs.TryGetValue(jobId, out var job) ? job : null;
+                if (!Jobs.TryGetValue(jobId, out var job))
+                {
+                    return null;
+                }
+
+                // Check if job is stuck in "running" state without having called OnRunStarted (TotalTests still null).
+                // This happens when tests fail to initialize (e.g., unsaved scene, compilation issues).
+                // After 15 seconds without initialization, auto-fail the job to prevent hanging.
+                if (job.Status == TestJobStatus.Running && job.TotalTests == null)
+                {
+                    long now = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+                    if (!EditorApplication.isCompiling && !EditorApplication.isUpdating && now - job.StartedUnixMs > InitializationTimeoutMs)
+                    {
+                        McpLog.Warn($"[TestJobManager] Job {jobId} failed to initialize within {InitializationTimeoutMs}ms, auto-failing");
+                        job.Status = TestJobStatus.Failed;
+                        job.Error = "Test job failed to initialize (tests did not start within timeout)";
+                        job.FinishedUnixMs = now;
+                        job.LastUpdateUnixMs = now;
+                        if (_currentJobId == jobId)
+                        {
+                            _currentJobId = null;
+                        }
+                        shouldPersist = true;
+                    }
+                }
+
+                jobToReturn = job;
             }
+
+            if (shouldPersist)
+            {
+                PersistToSessionState(force: true);
+            }
+            return jobToReturn;
         }
 
         internal static object ToSerializable(TestJob job, bool includeDetails, bool includeFailedTests)
@@ -582,5 +670,4 @@ namespace MCPForUnity.Editor.Services
         }
     }
 }
-
 

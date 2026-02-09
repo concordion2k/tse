@@ -1,10 +1,8 @@
 using System;
 using System.Collections.Generic;
-using System.IO;
 using System.Linq;
 using MCPForUnity.Editor.Constants;
-using MCPForUnity.Editor.Clients.Configurators;
-using MCPForUnity.Editor.Helpers;
+using MCPForUnity.Editor.Services;
 using MCPForUnity.Editor.Models;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
@@ -51,7 +49,7 @@ namespace MCPForUnity.Editor.Helpers
         private static void PopulateUnityNode(JObject unity, string uvPath, McpClient client, bool isVSCode)
         {
             // Get transport preference (default to HTTP)
-            bool prefValue = EditorPrefs.GetBool(EditorPrefKeys.UseHttpTransport, true);
+            bool prefValue = EditorConfigurationCache.Instance.UseHttpTransport;
             bool clientSupportsHttp = client?.SupportsHttpTransport != false;
             bool useHttpTransport = clientSupportsHttp && prefValue;
             string httpProperty = string.IsNullOrEmpty(client?.HttpUrlProperty) ? "url" : client.HttpUrlProperty;
@@ -73,7 +71,32 @@ namespace MCPForUnity.Editor.Helpers
                 if (unity["command"] != null) unity.Remove("command");
                 if (unity["args"] != null) unity.Remove("args");
 
+                // Only include API key header for remote-hosted mode
+                if (HttpEndpointUtility.IsRemoteScope())
+                {
+                    string apiKey = EditorPrefs.GetString(EditorPrefKeys.ApiKey, string.Empty);
+                    if (!string.IsNullOrEmpty(apiKey))
+                    {
+                        var headers = new JObject { [AuthConstants.ApiKeyHeader] = apiKey };
+                        unity["headers"] = headers;
+                    }
+                    else
+                    {
+                        if (unity["headers"] != null) unity.Remove("headers");
+                    }
+                }
+                else
+                {
+                    // Local HTTP doesn't use API keys; remove any stale headers
+                    if (unity["headers"] != null) unity.Remove("headers");
+                }
+
                 if (isVSCode)
+                {
+                    unity["type"] = "http";
+                }
+                // Also add type for Claude Code (uses mcpServers layout but needs type field)
+                else if (client?.name == "Claude Code")
                 {
                     unity["type"] = "http";
                 }
@@ -85,20 +108,8 @@ namespace MCPForUnity.Editor.Helpers
 
                 var toolArgs = BuildUvxArgs(fromUrl, packageName);
 
-                if (ShouldUseWindowsCmdShim(client))
-                {
-                    unity["command"] = ResolveCmdPath();
-
-                    var cmdArgs = new List<string> { "/c", uvxPath };
-                    cmdArgs.AddRange(toolArgs);
-
-                    unity["args"] = JArray.FromObject(cmdArgs.ToArray());
-                }
-                else
-                {
-                    unity["command"] = uvxPath;
-                    unity["args"] = JArray.FromObject(toolArgs.ToArray());
-                }
+                unity["command"] = uvxPath;
+                unity["args"] = JArray.FromObject(toolArgs.ToArray());
 
                 // Remove url/serverUrl if they exist from previous config
                 if (unity["url"] != null) unity.Remove("url");
@@ -110,8 +121,8 @@ namespace MCPForUnity.Editor.Helpers
                 }
             }
 
-            // Remove type for non-VSCode clients
-            if (!isVSCode && unity["type"] != null)
+            // Remove type for non-VSCode clients (except Claude Code which needs it)
+            if (!isVSCode && client?.name != "Claude Code" && unity["type"] != null)
             {
                 unity.Remove("type");
             }
@@ -154,20 +165,22 @@ namespace MCPForUnity.Editor.Helpers
         private static IList<string> BuildUvxArgs(string fromUrl, string packageName)
         {
             // Dev mode: force a fresh install/resolution (avoids stale cached builds while iterating).
-            // `--no-cache` is the key flag; `--refresh` ensures metadata is revalidated.
+            // `--no-cache` avoids reading from cache; `--refresh` ensures metadata is revalidated.
+            // Note: --reinstall is not supported by uvx and will cause a warning.
             // Keep ordering consistent with other uvx builders: dev flags first, then --from <url>, then package name.
             var args = new List<string>();
-            
+
             // Use central helper that checks both DevModeForceServerRefresh AND local path detection.
             if (AssetPathUtility.ShouldForceUvxRefresh())
             {
                 args.Add("--no-cache");
                 args.Add("--refresh");
             }
-            if (!string.IsNullOrEmpty(fromUrl))
+
+            // Use centralized helper for beta server / prerelease args
+            foreach (var arg in AssetPathUtility.GetBetaServerFromArgsList())
             {
-                args.Add("--from");
-                args.Add(fromUrl);
+                args.Add(arg);
             }
             args.Add(packageName);
 
@@ -177,27 +190,5 @@ namespace MCPForUnity.Editor.Helpers
             return args;
         }
 
-        private static bool ShouldUseWindowsCmdShim(McpClient client)
-        {
-            if (client == null)
-            {
-                return false;
-            }
-
-            return Application.platform == RuntimePlatform.WindowsEditor &&
-                   string.Equals(client.name, ClaudeDesktopConfigurator.ClientName, StringComparison.OrdinalIgnoreCase);
-        }
-
-        private static string ResolveCmdPath()
-        {
-            var comSpec = Environment.GetEnvironmentVariable("ComSpec");
-            if (!string.IsNullOrEmpty(comSpec) && File.Exists(comSpec))
-            {
-                return comSpec;
-            }
-
-            string system32Cmd = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.System), "cmd.exe");
-            return File.Exists(system32Cmd) ? system32Cmd : "cmd.exe";
-        }
     }
 }

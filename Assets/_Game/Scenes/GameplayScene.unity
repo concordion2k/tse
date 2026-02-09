@@ -5431,6 +5431,7 @@ GameObject:
   - component: {fileID: 330585544}
   - component: {fileID: 330585547}
   - component: {fileID: 330585548}
+  - component: {fileID: 330585549}
   m_Layer: 0
   m_Name: Main Camera
   m_TagString: MainCamera
@@ -5569,10 +5570,27 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::CameraFollowController
   target: {fileID: 1251178371}
+  pathFollower: {fileID: 833690415}
   offset: {x: 0, y: 1, z: -5}
   lookAhead: 5
   followSpeed: 10
   rotationSpeed: 5
+--- !u!114 &330585549
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 330585543}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: c964c4bc708c54edcb91d8ab4ace6973, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::LevelDesigner.LevelPathFollower
+  pathData: {fileID: 0}
+  startDistance: 0
+  speedMultiplier: 1
+  isFollowing: 1
 --- !u!1 &381556853
 GameObject:
   m_ObjectHideFlags: 0
@@ -6126,6 +6144,87 @@ Transform:
   m_Children: []
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!1 &833690412
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 833690416}
+  - component: {fileID: 833690415}
+  - component: {fileID: 833690414}
+  - component: {fileID: 833690413}
+  m_Layer: 0
+  m_Name: LevelSystem
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!114 &833690413
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 833690412}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: ac45261ee9dc44cc59232b491744953e, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::LevelDesigner.LevelEnemySpawner
+  spawnAheadDistance: 100
+  despawnBehindDistance: 50
+  showDebugInfo: 0
+--- !u!114 &833690414
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 833690412}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 792396b1b03c44c4db86038d437faef1, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::LevelDesigner.LevelManager
+  levelSettings: {fileID: 11400000, guid: 1d6131843633f435285003db21e89e5b, type: 2}
+  pathFollower: {fileID: 0}
+  enemySpawner: {fileID: 0}
+  isInitialized: 0
+--- !u!114 &833690415
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 833690412}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: c964c4bc708c54edcb91d8ab4ace6973, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::LevelDesigner.LevelPathFollower
+  pathData: {fileID: 11400000, guid: 3e87b851be92a41e6adb9cf4a0b00b09, type: 2}
+  startDistance: 0
+  speedMultiplier: 1
+  isFollowing: 1
+--- !u!4 &833690416
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 833690412}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: -183.29565, y: -0, z: 18.33931}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1 &874023464
 GameObject:
   m_ObjectHideFlags: 0
@@ -6519,6 +6618,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 3cd602290ec554c578a18466dd166182, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::PlayerShipMovement
+  pathFollower: {fileID: 0}
   forwardSpeed: 20
   maxLateralSpeed: 10
   accelerationTime: 0.5
@@ -6557,6 +6657,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 3cd602290ec554c578a18466dd166182, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::PlayerShipMovement
+  pathFollower: {fileID: 833690415}
   forwardSpeed: 20
   maxLateralSpeed: 10
   accelerationTime: 0.5
@@ -7478,3 +7579,4 @@ SceneRoots:
   - {fileID: 954510869}
   - {fileID: 409395827}
   - {fileID: 1560710942}
+  - {fileID: 833690416}

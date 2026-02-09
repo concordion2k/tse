@@ -1,10 +1,15 @@
 using UnityEngine;
+using LevelDesigner;
 
 public class CameraFollowController : MonoBehaviour
 {
     [Header("Target Settings")]
     [Tooltip("The transform to follow (PlayerShip)")]
     public Transform target;
+
+    [Header("Path Following")]
+    [Tooltip("Reference to level path follower for rotation alignment")]
+    public LevelPathFollower pathFollower;
 
     [Header("Camera Positioning")]
     [Tooltip("Offset from target in local space (relative to target's rotation)")]
@@ -22,6 +27,7 @@ public class CameraFollowController : MonoBehaviour
 
     private Vector3 currentVelocity = Vector3.zero;
     private PlayerShipMovement shipMovement;
+    private bool hasSnappedToTarget;
 
     void LateUpdate()
     {
@@ -41,8 +47,27 @@ public class CameraFollowController : MonoBehaviour
             }
         }
 
+        // Snap to target on first frame to prevent initial jerk
+        if (!hasSnappedToTarget)
+        {
+            hasSnappedToTarget = true;
+            SnapToTarget();
+        }
+
         UpdateCameraPosition();
         UpdateCameraRotation();
+    }
+
+    void SnapToTarget()
+    {
+        Vector3 followPosition = (shipMovement != null) ? shipMovement.GetCenterPath() : target.position;
+        transform.position = followPosition + offset;
+
+        Vector3 forward = (pathFollower != null && pathFollower.HasValidPath)
+            ? pathFollower.GetPathForward()
+            : target.forward;
+        Vector3 lookAtPoint = followPosition + forward * lookAhead;
+        transform.rotation = Quaternion.LookRotation(lookAtPoint - transform.position);
     }
 
     void UpdateCameraPosition()
@@ -93,8 +118,13 @@ public class CameraFollowController : MonoBehaviour
             lookAtBase = target.position;
         }
 
+        // Use path forward if available, otherwise target forward
+        Vector3 forward = (pathFollower != null && pathFollower.HasValidPath)
+            ? pathFollower.GetPathForward()
+            : target.forward;
+
         // Calculate look-at point: slightly ahead of the center path
-        Vector3 lookAtPoint = lookAtBase + target.forward * lookAhead;
+        Vector3 lookAtPoint = lookAtBase + forward * lookAhead;
 
         // Calculate desired rotation
         Quaternion desiredRotation = Quaternion.LookRotation(lookAtPoint - transform.position);

@@ -24,10 +24,13 @@ namespace MCPForUnity.Editor.Constants
         internal const string ClaudeCliPathOverride = "MCPForUnity.ClaudeCliPath";
 
         internal const string HttpBaseUrl = "MCPForUnity.HttpUrl";
+        internal const string HttpRemoteBaseUrl = "MCPForUnity.HttpRemoteUrl";
         internal const string SessionId = "MCPForUnity.SessionId";
         internal const string WebSocketUrlOverride = "MCPForUnity.WebSocketUrl";
         internal const string GitUrlOverride = "MCPForUnity.GitUrlOverride";
         internal const string DevModeForceServerRefresh = "MCPForUnity.DevModeForceServerRefresh";
+        internal const string UseBetaServer = "MCPForUnity.UseBetaServer";
+        internal const string ProjectScopedToolsLocalHttp = "MCPForUnity.ProjectScopedTools.LocalHttp";
 
         internal const string PackageDeploySourcePath = "MCPForUnity.PackageDeploy.SourcePath";
         internal const string PackageDeployLastBackupPath = "MCPForUnity.PackageDeploy.LastBackupPath";
@@ -40,6 +43,8 @@ namespace MCPForUnity.Editor.Constants
         internal const string AutoRegisterEnabled = "MCPForUnity.AutoRegisterEnabled";
         internal const string ToolEnabledPrefix = "MCPForUnity.ToolEnabled.";
         internal const string ToolFoldoutStatePrefix = "MCPForUnity.ToolFoldout.";
+        internal const string ResourceEnabledPrefix = "MCPForUnity.ResourceEnabled.";
+        internal const string ResourceFoldoutStatePrefix = "MCPForUnity.ResourceFoldout.";
         internal const string EditorWindowActivePanel = "MCPForUnity.EditorWindow.ActivePanel";
 
         internal const string SetupCompleted = "MCPForUnity.SetupCompleted";
@@ -49,9 +54,13 @@ namespace MCPForUnity.Editor.Constants
 
         internal const string LastUpdateCheck = "MCPForUnity.LastUpdateCheck";
         internal const string LatestKnownVersion = "MCPForUnity.LatestKnownVersion";
+        internal const string LastAssetStoreUpdateCheck = "MCPForUnity.LastAssetStoreUpdateCheck";
+        internal const string LatestKnownAssetStoreVersion = "MCPForUnity.LatestKnownAssetStoreVersion";
         internal const string LastStdIoUpgradeVersion = "MCPForUnity.LastStdIoUpgradeVersion";
 
         internal const string TelemetryDisabled = "MCPForUnity.TelemetryDisabled";
         internal const string CustomerUuid = "MCPForUnity.CustomerUUID";
+
+        internal const string ApiKey = "MCPForUnity.ApiKey";
     }
 }

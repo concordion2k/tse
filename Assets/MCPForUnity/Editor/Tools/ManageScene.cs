@@ -40,47 +40,23 @@ namespace MCPForUnity.Editor.Tools
         private static SceneCommand ToSceneCommand(JObject p)
         {
             if (p == null) return new SceneCommand();
-            int? BI(JToken t)
-            {
-                if (t == null || t.Type == JTokenType.Null) return null;
-                var s = t.ToString().Trim();
-                if (s.Length == 0) return null;
-                if (int.TryParse(s, out var i)) return i;
-                if (double.TryParse(s, out var d)) return (int)d;
-                return t.Type == JTokenType.Integer ? t.Value<int>() : (int?)null;
-            }
-            bool? BB(JToken t)
-            {
-                if (t == null || t.Type == JTokenType.Null) return null;
-                try
-                {
-                    if (t.Type == JTokenType.Boolean) return t.Value<bool>();
-                    var s = t.ToString().Trim();
-                    if (s.Length == 0) return null;
-                    if (bool.TryParse(s, out var b)) return b;
-                    if (s == "1") return true;
-                    if (s == "0") return false;
-                }
-                catch { }
-                return null;
-            }
             return new SceneCommand
             {
                 action = (p["action"]?.ToString() ?? string.Empty).Trim().ToLowerInvariant(),
                 name = p["name"]?.ToString() ?? string.Empty,
                 path = p["path"]?.ToString() ?? string.Empty,
-                buildIndex = BI(p["buildIndex"] ?? p["build_index"]),
+                buildIndex = ParamCoercion.CoerceIntNullable(p["buildIndex"] ?? p["build_index"]),
                 fileName = (p["fileName"] ?? p["filename"])?.ToString() ?? string.Empty,
-                superSize = BI(p["superSize"] ?? p["super_size"] ?? p["supersize"]),
+                superSize = ParamCoercion.CoerceIntNullable(p["superSize"] ?? p["super_size"] ?? p["supersize"]),
 
                 // get_hierarchy paging + safety
                 parent = p["parent"],
-                pageSize = BI(p["pageSize"] ?? p["page_size"]),
-                cursor = BI(p["cursor"]),
-                maxNodes = BI(p["maxNodes"] ?? p["max_nodes"]),
-                maxDepth = BI(p["maxDepth"] ?? p["max_depth"]),
-                maxChildrenPerNode = BI(p["maxChildrenPerNode"] ?? p["max_children_per_node"]),
-                includeTransform = BB(p["includeTransform"] ?? p["include_transform"]),
+                pageSize = ParamCoercion.CoerceIntNullable(p["pageSize"] ?? p["page_size"]),
+                cursor = ParamCoercion.CoerceIntNullable(p["cursor"]),
+                maxNodes = ParamCoercion.CoerceIntNullable(p["maxNodes"] ?? p["max_nodes"]),
+                maxDepth = ParamCoercion.CoerceIntNullable(p["maxDepth"] ?? p["max_depth"]),
+                maxChildrenPerNode = ParamCoercion.CoerceIntNullable(p["maxChildrenPerNode"] ?? p["max_children_per_node"]),
+                includeTransform = ParamCoercion.CoerceBoolNullable(p["includeTransform"] ?? p["include_transform"]),
             };
         }
 
@@ -101,7 +77,7 @@ namespace MCPForUnity.Editor.Tools
             string relativeDir = path ?? string.Empty;
             if (!string.IsNullOrEmpty(relativeDir))
             {
-                relativeDir = relativeDir.Replace('\\', '/').Trim('/');
+                relativeDir = AssetPathUtility.NormalizeSeparators(relativeDir).Trim('/');
                 if (relativeDir.StartsWith("Assets/", StringComparison.OrdinalIgnoreCase))
                 {
                     relativeDir = relativeDir.Substring("Assets/".Length).TrimStart('/');
@@ -128,7 +104,7 @@ namespace MCPForUnity.Editor.Tools
             // Ensure relativePath always starts with "Assets/" and uses forward slashes
             string relativePath = string.IsNullOrEmpty(sceneFileName)
                 ? null
-                : Path.Combine("Assets", relativeDir, sceneFileName).Replace('\\', '/');
+                : AssetPathUtility.NormalizeSeparators(Path.Combine("Assets", relativeDir, sceneFileName));
 
             // Ensure directory exists for 'create'
             if (action == "create" && !string.IsNullOrEmpty(fullPathDir))
@@ -384,34 +360,62 @@ namespace MCPForUnity.Editor.Tools
             try
             {
                 int resolvedSuperSize = (superSize.HasValue && superSize.Value > 0) ? superSize.Value : 1;
-                ScreenshotCaptureResult result;
 
-                if (Application.isPlaying)
+                // Batch mode warning
+                if (Application.isBatchMode)
                 {
-                    result = ScreenshotUtility.CaptureToAssetsFolder(fileName, resolvedSuperSize, ensureUniqueFileName: true);
+                    McpLog.Warn("[ManageScene] Screenshot capture in batch mode uses camera-based fallback. Results may vary.");
+                }
+
+                // Check Screen Capture module availability and warn if not available
+                bool screenCaptureAvailable = ScreenshotUtility.IsScreenCaptureModuleAvailable;
+                bool hasCameraFallback = Camera.main != null || UnityEngine.Object.FindObjectsOfType<Camera>().Length > 0;
+
+#if UNITY_2022_1_OR_NEWER
+                if (!screenCaptureAvailable && !hasCameraFallback)
+                {
+                    return new ErrorResponse(
+                        "Cannot capture screenshot. The Screen Capture module is not enabled and no Camera was found in the scene. " +
+                        "Please either: (1) Enable the Screen Capture module: Window > Package Manager > Built-in > Screen Capture > Enable, " +
+                        "or (2) Add a Camera to your scene for camera-based fallback capture."
+                    );
+                }
+                
+                if (!screenCaptureAvailable)
+                {
+                    McpLog.Warn("[ManageScene] Screen Capture module not enabled. Using camera-based fallback. " +
+                        "For best results, enable it: Window > Package Manager > Built-in > Screen Capture > Enable.");
+                }
+#else
+                if (!hasCameraFallback)
+                {
+                    return new ErrorResponse(
+                        "No camera found in the scene. Screenshot capture on Unity versions before 2022.1 requires a Camera in the scene. " +
+                        "Please add a Camera to your scene or upgrade to Unity 2022.1+ for ScreenCapture API support."
+                    );
+                }
+#endif
+
+                // Best-effort: ensure Game View exists and repaints before capture.
+                if (!Application.isBatchMode)
+                {
+                    EnsureGameView();
+                }
+
+                ScreenshotCaptureResult result = ScreenshotUtility.CaptureToAssetsFolder(fileName, resolvedSuperSize, ensureUniqueFileName: true);
+
+                // ScreenCapture.CaptureScreenshot is async. Import after the file actually hits disk.
+                if (result.IsAsync)
+                {
+                    ScheduleAssetImportWhenFileExists(result.AssetsRelativePath, result.FullPath, timeoutSeconds: 30.0);
                 }
                 else
                 {
-                    // Edit Mode path: render from the best-guess camera using RenderTexture.
-                    Camera cam = Camera.main;
-                    if (cam == null)
-                    {
-                        // Use FindObjectsOfType for Unity 2021 compatibility
-                        var cams = UnityEngine.Object.FindObjectsOfType<Camera>();
-                        cam = cams.FirstOrDefault();
-                    }
-
-                    if (cam == null)
-                    {
-                        return new ErrorResponse("No camera found to capture screenshot in Edit Mode.");
-                    }
-
-                    result = ScreenshotUtility.CaptureFromCameraToAssetsFolder(cam, fileName, resolvedSuperSize, ensureUniqueFileName: true);
+                    AssetDatabase.ImportAsset(result.AssetsRelativePath, ImportAssetOptions.ForceSynchronousImport);
                 }
 
-                AssetDatabase.Refresh(ImportAssetOptions.ForceSynchronousImport);
-
-                string message = $"Screenshot captured to '{result.AssetsRelativePath}' (full: {result.FullPath}).";
+                string verb = result.IsAsync ? "Screenshot requested" : "Screenshot captured";
+                string message = $"{verb} to '{result.AssetsRelativePath}' (full: {result.FullPath}).";
 
                 return new SuccessResponse(
                     message,
@@ -420,6 +424,7 @@ namespace MCPForUnity.Editor.Tools
                         path = result.AssetsRelativePath,
                         fullPath = result.FullPath,
                         superSize = result.SuperSize,
+                        isAsync = result.IsAsync,
                     }
                 );
             }
@@ -427,6 +432,111 @@ namespace MCPForUnity.Editor.Tools
             {
                 return new ErrorResponse($"Error capturing screenshot: {e.Message}");
             }
+        }
+
+        private static void EnsureGameView()
+        {
+            try
+            {
+                // Ensure a Game View exists and has a chance to repaint before capture.
+                try
+                {
+                    if (!EditorApplication.ExecuteMenuItem("Window/General/Game"))
+                    {
+                        // Some Unity versions expose hotkey suffixes in menu paths.
+                        EditorApplication.ExecuteMenuItem("Window/General/Game %2");
+                    }
+                }
+                catch (Exception e)
+                {
+                    try { McpLog.Debug($"[ManageScene] screenshot: failed to open Game View via menu item: {e.Message}"); } catch { }
+                }
+
+                try
+                {
+                    var gameViewType = Type.GetType("UnityEditor.GameView,UnityEditor");
+                    if (gameViewType != null)
+                    {
+                        var window = EditorWindow.GetWindow(gameViewType);
+                        window?.Repaint();
+                    }
+                }
+                catch (Exception e)
+                {
+                    try { McpLog.Debug($"[ManageScene] screenshot: failed to repaint Game View: {e.Message}"); } catch { }
+                }
+
+                try { SceneView.RepaintAll(); }
+                catch (Exception e)
+                {
+                    try { McpLog.Debug($"[ManageScene] screenshot: failed to repaint Scene View: {e.Message}"); } catch { }
+                }
+
+                try { EditorApplication.QueuePlayerLoopUpdate(); }
+                catch (Exception e)
+                {
+                    try { McpLog.Debug($"[ManageScene] screenshot: failed to queue player loop update: {e.Message}"); } catch { }
+                }
+            }
+            catch (Exception e)
+            {
+                try { McpLog.Debug($"[ManageScene] screenshot: EnsureGameView failed: {e.Message}"); } catch { }
+            }
+        }
+
+        private static void ScheduleAssetImportWhenFileExists(string assetsRelativePath, string fullPath, double timeoutSeconds)
+        {
+            if (string.IsNullOrWhiteSpace(assetsRelativePath) || string.IsNullOrWhiteSpace(fullPath))
+            {
+                McpLog.Warn("[ManageScene] ScheduleAssetImportWhenFileExists: invalid paths provided, skipping import scheduling.");
+                return;
+            }
+
+            double start = EditorApplication.timeSinceStartup;
+            int failureCount = 0;
+            bool hasSeenFile = false;
+            const int maxLoggedFailures = 3;
+            EditorApplication.CallbackFunction tick = null;
+            tick = () =>
+            {
+                try
+                {
+                    if (File.Exists(fullPath))
+                    {
+                        hasSeenFile = true;
+
+                        AssetDatabase.ImportAsset(assetsRelativePath, ImportAssetOptions.ForceSynchronousImport);
+                        McpLog.Debug($"[ManageScene] Imported asset at '{assetsRelativePath}'.");
+                        EditorApplication.update -= tick;
+                        return;
+                    }
+                }
+                catch (Exception e)
+                {
+                    failureCount++;
+
+                    if (failureCount <= maxLoggedFailures)
+                    {
+                        McpLog.Warn($"[ManageScene] Exception while importing asset '{assetsRelativePath}' from '{fullPath}' (attempt {failureCount}): {e}");
+                    }
+                }
+
+                if (EditorApplication.timeSinceStartup - start > timeoutSeconds)
+                {
+                    if (!hasSeenFile)
+                    {
+                        McpLog.Warn($"[ManageScene] Timed out waiting for file '{fullPath}' (asset: '{assetsRelativePath}') after {timeoutSeconds:F1} seconds. The asset was not imported.");
+                    }
+                    else
+                    {
+                        McpLog.Warn($"[ManageScene] Timed out importing asset '{assetsRelativePath}' from '{fullPath}' after {timeoutSeconds:F1} seconds. The file existed but the asset was not imported.");
+                    }
+
+                    EditorApplication.update -= tick;
+                }
+            };
+
+            EditorApplication.update += tick;
         }
 
         private static object GetActiveSceneInfo()
@@ -490,8 +600,21 @@ namespace MCPForUnity.Editor.Tools
         {
             try
             {
-                try { McpLog.Info("[ManageScene] get_hierarchy: querying EditorSceneManager.GetActiveScene", always: false); } catch { }
-                Scene activeScene = EditorSceneManager.GetActiveScene();
+                // Check Prefab Stage first
+                var prefabStage = PrefabStageUtility.GetCurrentPrefabStage();
+                Scene activeScene;
+                
+                if (prefabStage != null)
+                {
+                    activeScene = prefabStage.scene;
+                    try { McpLog.Info("[ManageScene] get_hierarchy: using Prefab Stage scene", always: false); } catch { }
+                }
+                else
+                {
+                    try { McpLog.Info("[ManageScene] get_hierarchy: querying EditorSceneManager.GetActiveScene", always: false); } catch { }
+                    activeScene = EditorSceneManager.GetActiveScene();
+                }
+                
                 try { McpLog.Info($"[ManageScene] get_hierarchy: got scene valid={activeScene.IsValid()} loaded={activeScene.isLoaded} name='{activeScene.name}'", always: false); } catch { }
                 if (!activeScene.IsValid() || !activeScene.isLoaded)
                 {
@@ -599,7 +722,16 @@ namespace MCPForUnity.Editor.Tools
             // Path-based find (e.g., "Root/Child/GrandChild")
             if (s.Contains("/"))
             {
-                try { return GameObject.Find(s); } catch { }
+                try
+                {
+                    var ids = GameObjectLookup.SearchGameObjects("by_path", s, includeInactive: true, maxResults: 1);
+                    if (ids.Count > 0)
+                    {
+                        var byPath = GameObjectLookup.FindById(ids[0]);
+                        if (byPath != null) return byPath;
+                    }
+                }
+                catch { }
             }
 
             // Name-based find (first match, includes inactive)
@@ -646,7 +778,10 @@ namespace MCPForUnity.Editor.Tools
                     }
                 }
             }
-            catch { }
+            catch (Exception ex)
+            {
+                McpLog.Debug($"[ManageScene] Failed to enumerate components for '{go.name}': {ex.Message}");
+            }
 
             var d = new Dictionary<string, object>
             {
@@ -662,7 +797,7 @@ namespace MCPForUnity.Editor.Tools
                 { "childrenTruncated", childrenTruncated },
                 { "childrenCursor", childCount > 0 ? "0" : null },
                 { "childrenPageSizeDefault", maxChildrenPerNode },
-                { "componentTypes", componentTypes },  // NEW: Lightweight component type list
+                { "componentTypes", componentTypes },
             };
 
             if (includeTransform && go.transform != null)
@@ -699,57 +834,5 @@ namespace MCPForUnity.Editor.Tools
             }
         }
 
-        /// <summary>
-        /// Recursively builds a data representation of a GameObject and its children.
-        /// </summary>
-        private static object GetGameObjectDataRecursive(GameObject go)
-        {
-            if (go == null)
-                return null;
-
-            var childrenData = new List<object>();
-            foreach (Transform child in go.transform)
-            {
-                childrenData.Add(GetGameObjectDataRecursive(child.gameObject));
-            }
-
-            var gameObjectData = new Dictionary<string, object>
-            {
-                { "name", go.name },
-                { "activeSelf", go.activeSelf },
-                { "activeInHierarchy", go.activeInHierarchy },
-                { "tag", go.tag },
-                { "layer", go.layer },
-                { "isStatic", go.isStatic },
-                { "instanceID", go.GetInstanceID() }, // Useful unique identifier
-                {
-                    "transform",
-                    new
-                    {
-                        position = new
-                        {
-                            x = go.transform.localPosition.x,
-                            y = go.transform.localPosition.y,
-                            z = go.transform.localPosition.z,
-                        },
-                        rotation = new
-                        {
-                            x = go.transform.localRotation.eulerAngles.x,
-                            y = go.transform.localRotation.eulerAngles.y,
-                            z = go.transform.localRotation.eulerAngles.z,
-                        }, // Euler for simplicity
-                        scale = new
-                        {
-                            x = go.transform.localScale.x,
-                            y = go.transform.localScale.y,
-                            z = go.transform.localScale.z,
-                        },
-                    }
-                },
-                { "children", childrenData },
-            };
-
-            return gameObjectData;
-        }
     }
 }

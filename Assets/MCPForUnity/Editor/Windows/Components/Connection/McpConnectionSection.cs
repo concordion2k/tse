@@ -1,8 +1,8 @@
 using System;
-using System.Net.Sockets;
 using System.Threading.Tasks;
 using MCPForUnity.Editor.Constants;
 using MCPForUnity.Editor.Helpers;
+using MCPForUnity.Editor.Models;
 using MCPForUnity.Editor.Services;
 using MCPForUnity.Editor.Services.Transport;
 using UnityEditor;
@@ -28,23 +28,29 @@ namespace MCPForUnity.Editor.Windows.Components.Connection
 
         // UI Elements
         private EnumField transportDropdown;
+        private VisualElement transportMismatchWarning;
+        private Label transportMismatchText;
         private VisualElement httpUrlRow;
+        private VisualElement httpServerControlRow;
+        private Foldout manualCommandFoldout;
         private VisualElement httpServerCommandSection;
         private TextField httpServerCommandField;
         private Button copyHttpServerCommandButton;
         private Label httpServerCommandHint;
         private TextField httpUrlField;
         private Button startHttpServerButton;
-        private Button stopHttpServerButton;
         private VisualElement unitySocketPortRow;
         private TextField unityPortField;
         private VisualElement statusIndicator;
         private Label connectionStatusLabel;
         private Button connectionToggleButton;
-        private VisualElement healthIndicator;
-        private Label healthStatusLabel;
-        private VisualElement healthRow;
-        private Button testConnectionButton;
+
+        // API Key UI Elements (for remote-hosted mode)
+        private VisualElement apiKeyRow;
+        private TextField apiKeyField;
+        private Button getApiKeyButton;
+        private Button clearApiKeyButton;
+        private string cachedLoginUrl;
 
         private bool connectionToggleInProgress;
         private bool httpServerToggleInProgress;
@@ -53,17 +59,19 @@ namespace MCPForUnity.Editor.Windows.Components.Connection
         private double lastLocalServerRunningPollTime;
         private bool lastLocalServerRunning;
 
-        // Health status constants
-        private const string HealthStatusUnknown = "Unknown";
-        private const string HealthStatusHealthy = "Healthy";
-        private const string HealthStatusPingFailed = "Ping Failed";
-        private const string HealthStatusUnhealthy = "Unhealthy";
+        // Reference to Advanced section for health status updates
+        private Action<bool, string> onHealthStatusUpdate;
 
         // Events
         public event Action OnManualConfigUpdateRequested;
         public event Action OnTransportChanged;
 
         public VisualElement Root { get; private set; }
+
+        public void SetHealthStatusUpdateCallback(Action<bool, string> callback)
+        {
+            onHealthStatusUpdate = callback;
+        }
 
         public McpConnectionSection(VisualElement root)
         {
@@ -76,29 +84,40 @@ namespace MCPForUnity.Editor.Windows.Components.Connection
         private void CacheUIElements()
         {
             transportDropdown = Root.Q<EnumField>("transport-dropdown");
+            transportMismatchWarning = Root.Q<VisualElement>("transport-mismatch-warning");
+            transportMismatchText = Root.Q<Label>("transport-mismatch-text");
             httpUrlRow = Root.Q<VisualElement>("http-url-row");
+            httpServerControlRow = Root.Q<VisualElement>("http-server-control-row");
+            manualCommandFoldout = Root.Q<Foldout>("manual-command-foldout");
             httpServerCommandSection = Root.Q<VisualElement>("http-server-command-section");
             httpServerCommandField = Root.Q<TextField>("http-server-command");
             copyHttpServerCommandButton = Root.Q<Button>("copy-http-server-command-button");
             httpServerCommandHint = Root.Q<Label>("http-server-command-hint");
             httpUrlField = Root.Q<TextField>("http-url");
             startHttpServerButton = Root.Q<Button>("start-http-server-button");
-            stopHttpServerButton = Root.Q<Button>("stop-http-server-button");
             unitySocketPortRow = Root.Q<VisualElement>("unity-socket-port-row");
             unityPortField = Root.Q<TextField>("unity-port");
             statusIndicator = Root.Q<VisualElement>("status-indicator");
             connectionStatusLabel = Root.Q<Label>("connection-status");
             connectionToggleButton = Root.Q<Button>("connection-toggle");
-            healthIndicator = Root.Q<VisualElement>("health-indicator");
-            healthStatusLabel = Root.Q<Label>("health-status");
-            healthRow = Root.Q<VisualElement>("health-row");
-            testConnectionButton = Root.Q<Button>("test-connection-button");
+
+            // API Key UI Elements
+            apiKeyRow = Root.Q<VisualElement>("api-key-row");
+            apiKeyField = Root.Q<TextField>("api-key-field");
+            getApiKeyButton = Root.Q<Button>("get-api-key-button");
+            clearApiKeyButton = Root.Q<Button>("clear-api-key-button");
         }
 
         private void InitializeUI()
         {
+            // Ensure manual command foldout starts collapsed
+            if (manualCommandFoldout != null)
+            {
+                manualCommandFoldout.value = false;
+            }
+
             transportDropdown.Init(TransportProtocol.HTTPRemote);
-            bool useHttpTransport = EditorPrefs.GetBool(EditorPrefKeys.UseHttpTransport, true);
+            bool useHttpTransport = EditorConfigurationCache.Instance.UseHttpTransport;
             if (!useHttpTransport)
             {
                 transportDropdown.value = TransportProtocol.Stdio;
@@ -109,7 +128,7 @@ namespace MCPForUnity.Editor.Windows.Components.Connection
                 string scope = EditorPrefs.GetString(EditorPrefKeys.HttpTransportScope, string.Empty);
                 if (string.IsNullOrEmpty(scope))
                 {
-                    scope = MCPServiceLocator.Server.IsLocalUrl() ? "local" : "remote";
+                    scope = "remote";
                     try
                     {
                         EditorPrefs.SetString(EditorPrefKeys.HttpTransportScope, scope);
@@ -123,7 +142,24 @@ namespace MCPForUnity.Editor.Windows.Components.Connection
                 transportDropdown.value = scope == "remote" ? TransportProtocol.HTTPRemote : TransportProtocol.HTTPLocal;
             }
 
+            // Set tooltips
+            if (httpUrlField != null)
+                httpUrlField.tooltip = "HTTP endpoint URL for the MCP server. Use localhost for local servers.";
+            if (unityPortField != null)
+                unityPortField.tooltip = "Port for Unity's internal MCP bridge socket. Used for stdio transport.";
+            if (connectionToggleButton != null)
+                connectionToggleButton.tooltip = "Start or end the MCP session between Unity and the server.";
+
             httpUrlField.value = HttpEndpointUtility.GetBaseUrl();
+
+            // Initialize API key field
+            if (apiKeyField != null)
+            {
+                apiKeyField.value = EditorPrefs.GetString(EditorPrefKeys.ApiKey, string.Empty);
+                apiKeyField.tooltip = "API key for remote-hosted MCP server authentication";
+                apiKeyField.isPasswordField = true;
+                apiKeyField.maskChar = '*';
+            }
 
             int unityPort = EditorPrefs.GetInt(EditorPrefKeys.UnitySocketPort, 0);
             if (unityPort == 0)
@@ -135,16 +171,6 @@ namespace MCPForUnity.Editor.Windows.Components.Connection
             UpdateHttpFieldVisibility();
             RefreshHttpUi();
             UpdateConnectionStatus();
-
-            // Explain what "Health" means (it is a separate verify/ping check and can differ from session state).
-            if (healthStatusLabel != null)
-            {
-                healthStatusLabel.tooltip = "Health is a lightweight verify/ping of the active transport. A session can be active while health is degraded.";
-            }
-            if (healthIndicator != null)
-            {
-                healthIndicator.tooltip = healthStatusLabel?.tooltip;
-            }
         }
 
         private void RegisterCallbacks()
@@ -154,8 +180,8 @@ namespace MCPForUnity.Editor.Windows.Components.Connection
                 var previous = (TransportProtocol)evt.previousValue;
                 var selected = (TransportProtocol)evt.newValue;
                 bool useHttp = selected != TransportProtocol.Stdio;
-                EditorPrefs.SetBool(EditorPrefKeys.UseHttpTransport, useHttp);
-                
+                EditorConfigurationCache.Instance.SetUseHttpTransport(useHttp);
+
                 // Clear any stale resume flags when user manually changes transport
                 try { EditorPrefs.DeleteKey(EditorPrefKeys.ResumeStdioAfterReload); } catch { }
                 try { EditorPrefs.DeleteKey(EditorPrefKeys.ResumeHttpAfterReload); } catch { }
@@ -163,9 +189,11 @@ namespace MCPForUnity.Editor.Windows.Components.Connection
                 if (useHttp)
                 {
                     string scope = selected == TransportProtocol.HTTPRemote ? "remote" : "local";
-                    EditorPrefs.SetString(EditorPrefKeys.HttpTransportScope, scope);
+                    EditorConfigurationCache.Instance.SetHttpTransportScope(scope);
                 }
 
+                // Swap the displayed URL to match the newly selected scope
+                SyncUrlFieldToScope();
                 UpdateHttpFieldVisibility();
                 RefreshHttpUi();
                 UpdateConnectionStatus();
@@ -220,18 +248,6 @@ namespace MCPForUnity.Editor.Windows.Components.Connection
                 startHttpServerButton.clicked += OnHttpServerToggleClicked;
             }
 
-            if (stopHttpServerButton != null)
-            {
-                // Stop button removed from UXML as part of consolidated Start/Stop UX.
-                // Kept null-check for backward compatibility if older UXML is loaded.
-                stopHttpServerButton.clicked += () =>
-                {
-                    // In older UXML layouts, route the stop button to the consolidated toggle behavior.
-                    // If a session is active, this will end it and attempt to stop the local server.
-                    OnHttpServerToggleClicked();
-                };
-            }
-
             if (copyHttpServerCommandButton != null)
             {
                 copyHttpServerCommandButton.clicked += () =>
@@ -255,7 +271,30 @@ namespace MCPForUnity.Editor.Windows.Components.Connection
             });
 
             connectionToggleButton.clicked += OnConnectionToggleClicked;
-            testConnectionButton.clicked += OnTestConnectionClicked;
+
+            // API Key field callbacks
+            if (apiKeyField != null)
+            {
+                apiKeyField.RegisterCallback<FocusOutEvent>(_ => PersistApiKeyFromField());
+                apiKeyField.RegisterCallback<KeyDownEvent>(evt =>
+                {
+                    if (evt.keyCode == KeyCode.Return || evt.keyCode == KeyCode.KeypadEnter)
+                    {
+                        PersistApiKeyFromField();
+                        evt.StopPropagation();
+                    }
+                });
+            }
+
+            if (getApiKeyButton != null)
+            {
+                getApiKeyButton.clicked += OnGetApiKeyClicked;
+            }
+
+            if (clearApiKeyButton != null)
+            {
+                clearApiKeyButton.clicked += OnClearApiKeyClicked;
+            }
         }
 
         private void PersistHttpUrlFromField()
@@ -268,6 +307,8 @@ namespace MCPForUnity.Editor.Windows.Components.Connection
             HttpEndpointUtility.SaveBaseUrl(httpUrlField.text);
             // Update displayed value to normalized form without re-triggering callbacks/caret jumps.
             httpUrlField.SetValueWithoutNotify(HttpEndpointUtility.GetBaseUrl());
+            // Invalidate cached login URL so it is re-fetched for the new base URL.
+            cachedLoginUrl = null;
             OnManualConfigUpdateRequested?.Invoke();
             RefreshHttpUi();
         }
@@ -278,9 +319,9 @@ namespace MCPForUnity.Editor.Windows.Components.Connection
             bool isRunning = bridgeService.IsRunning;
             bool showLocalServerControls = IsHttpLocalSelected();
             bool debugMode = EditorPrefs.GetBool(EditorPrefKeys.DebugLogs, false);
-            // Use EditorPrefs as source of truth for stdio selection - more reliable after domain reload
-            // than checking the dropdown which may not be initialized yet
-            bool stdioSelected = !EditorPrefs.GetBool(EditorPrefKeys.UseHttpTransport, true);
+            // EditorConfigurationCache is the source of truth for transport selection after domain reload
+            // (EditorPrefs is still used for debugMode and other UI-only state)
+            bool stdioSelected = !EditorConfigurationCache.Instance.UseHttpTransport;
 
             // Keep the Start/Stop Server button label in sync even when the session is not running
             // (e.g., orphaned server after a domain reload).
@@ -306,27 +347,13 @@ namespace MCPForUnity.Editor.Windows.Components.Connection
                 connectionToggleButton.style.display = showSessionToggle ? DisplayStyle.Flex : DisplayStyle.None;
             }
 
-            // Hide "Test" buttons unless Debug Mode is enabled.
-            if (testConnectionButton != null)
-            {
-                testConnectionButton.style.display = debugMode ? DisplayStyle.Flex : DisplayStyle.None;
-            }
-
-            // Health is useful mainly for diagnostics: hide it once we're "Healthy" unless Debug Mode is enabled.
-            // If health is degraded, keep it visible even outside Debug Mode so it can act as a signal.
-            if (healthRow != null)
-            {
-                bool showHealth = debugMode || (isRunning && lastHealthStatus != HealthStatusHealthy);
-                healthRow.style.display = showHealth ? DisplayStyle.Flex : DisplayStyle.None;
-            }
-
             if (isRunning)
             {
                 // Show instance name (project folder name) for better identification in multi-instance scenarios.
                 // Defensive: handle edge cases where path parsing might return null/empty.
                 string projectDir = System.IO.Path.GetDirectoryName(Application.dataPath);
-                string instanceName = !string.IsNullOrEmpty(projectDir) 
-                    ? System.IO.Path.GetFileName(projectDir) 
+                string instanceName = !string.IsNullOrEmpty(projectDir)
+                    ? System.IO.Path.GetFileName(projectDir)
                     : "Unity";
                 if (string.IsNullOrEmpty(instanceName)) instanceName = "Unity";
                 connectionStatusLabel.text = $"Session Active ({instanceName})";
@@ -334,7 +361,7 @@ namespace MCPForUnity.Editor.Windows.Components.Connection
                 statusIndicator.AddToClassList("connected");
                 connectionToggleButton.text = "End Session";
                 connectionToggleButton.SetEnabled(true); // Re-enable in case it was disabled during resumption
-                
+
                 // Force the UI to reflect the actual port being used
                 unityPortField.value = bridgeService.CurrentPort.ToString();
                 unityPortField.SetEnabled(false);
@@ -343,7 +370,7 @@ namespace MCPForUnity.Editor.Windows.Components.Connection
             {
                 // Check if we're resuming the stdio bridge after a domain reload.
                 // During this brief window, show "Resuming..." instead of "No Session" to avoid UI flicker.
-                bool isStdioResuming = stdioSelected 
+                bool isStdioResuming = stdioSelected
                     && EditorPrefs.GetBool(EditorPrefKeys.ResumeStdioAfterReload, false);
 
                 if (isStdioResuming)
@@ -361,19 +388,22 @@ namespace MCPForUnity.Editor.Windows.Components.Connection
                     statusIndicator.RemoveFromClassList("connected");
                     statusIndicator.AddToClassList("disconnected");
                     connectionToggleButton.text = "Start Session";
-                    connectionToggleButton.SetEnabled(true);
+
+                    // Disable Start Session for HTTP Remote when no API key is set
+                    bool httpRemoteNeedsKey = transportDropdown != null
+                        && (TransportProtocol)transportDropdown.value == TransportProtocol.HTTPRemote
+                        && string.IsNullOrEmpty(EditorPrefs.GetString(EditorPrefKeys.ApiKey, string.Empty));
+                    connectionToggleButton.SetEnabled(!httpRemoteNeedsKey);
+                    connectionToggleButton.tooltip = httpRemoteNeedsKey
+                        ? "An API key is required for HTTP Remote. Enter one above."
+                        : string.Empty;
                 }
-                
+
                 unityPortField.SetEnabled(!isStdioResuming);
 
-                healthStatusLabel.text = HealthStatusUnknown;
-                healthIndicator.RemoveFromClassList("healthy");
-                healthIndicator.RemoveFromClassList("warning");
-                healthIndicator.AddToClassList("unknown");
-                
                 int savedPort = EditorPrefs.GetInt(EditorPrefKeys.UnitySocketPort, 0);
-                unityPortField.value = (savedPort == 0 
-                    ? bridgeService.CurrentPort 
+                unityPortField.value = (savedPort == 0
+                    ? bridgeService.CurrentPort
                     : savedPort).ToString();
             }
 
@@ -399,6 +429,7 @@ namespace MCPForUnity.Editor.Windows.Components.Connection
                 httpServerCommandSection.style.display = DisplayStyle.None;
                 httpServerCommandField.value = string.Empty;
                 httpServerCommandField.tooltip = string.Empty;
+                httpServerCommandField.SetEnabled(false);
                 if (httpServerCommandHint != null)
                 {
                     httpServerCommandHint.text = string.Empty;
@@ -416,12 +447,22 @@ namespace MCPForUnity.Editor.Windows.Components.Connection
             {
                 httpServerCommandField.value = string.Empty;
                 httpServerCommandField.tooltip = string.Empty;
+                httpServerCommandField.SetEnabled(false);
+                httpServerCommandSection.EnableInClassList("http-local-invalid-url", true);
                 if (httpServerCommandHint != null)
                 {
-                    httpServerCommandHint.text = "HTTP Local requires a localhost URL (localhost/127.0.0.1/0.0.0.0/::1).";
+                    httpServerCommandHint.text = "⚠ HTTP Local requires a localhost URL (localhost/127.0.0.1/0.0.0.0/::1).";
+                    httpServerCommandHint.AddToClassList("http-local-url-error");
                 }
                 copyHttpServerCommandButton?.SetEnabled(false);
                 return;
+            }
+
+            httpServerCommandSection.EnableInClassList("http-local-invalid-url", false);
+            httpServerCommandField.SetEnabled(true);
+            if (httpServerCommandHint != null)
+            {
+                httpServerCommandHint.RemoveFromClassList("http-local-url-error");
             }
 
             if (MCPServiceLocator.Server.TryGetLocalHttpServerCommand(out var command, out var error))
@@ -455,14 +496,32 @@ namespace MCPForUnity.Editor.Windows.Components.Connection
         private void UpdateHttpFieldVisibility()
         {
             bool useHttp = (TransportProtocol)transportDropdown.value != TransportProtocol.Stdio;
+            bool httpLocalSelected = IsHttpLocalSelected();
+            bool httpRemoteSelected = transportDropdown != null && (TransportProtocol)transportDropdown.value == TransportProtocol.HTTPRemote;
 
             httpUrlRow.style.display = useHttp ? DisplayStyle.Flex : DisplayStyle.None;
+            httpServerControlRow.style.display = useHttp && httpLocalSelected ? DisplayStyle.Flex : DisplayStyle.None;
             unitySocketPortRow.style.display = useHttp ? DisplayStyle.None : DisplayStyle.Flex;
+
+            // Manual Server Launch foldout only relevant for HTTP Local
+            if (manualCommandFoldout != null)
+                manualCommandFoldout.style.display = httpLocalSelected ? DisplayStyle.Flex : DisplayStyle.None;
+
+            // API key fields only visible in HTTP Remote mode
+            if (apiKeyRow != null)
+                apiKeyRow.style.display = httpRemoteSelected ? DisplayStyle.Flex : DisplayStyle.None;
         }
 
         private bool IsHttpLocalSelected()
         {
             return transportDropdown != null && (TransportProtocol)transportDropdown.value == TransportProtocol.HTTPLocal;
+        }
+
+        private void SyncUrlFieldToScope()
+        {
+            if (httpUrlField == null) return;
+            httpUrlField.SetValueWithoutNotify(HttpEndpointUtility.GetBaseUrl());
+            cachedLoginUrl = null;
         }
 
         private void UpdateStartHttpButtonState()
@@ -482,14 +541,14 @@ namespace MCPForUnity.Editor.Windows.Components.Connection
             bool canStartLocalServer = httpLocalSelected && MCPServiceLocator.Server.IsLocalUrl();
             bool localServerRunning = false;
 
-            // Avoid running expensive port/PID checks every UI tick.
+            // Avoid running expensive port/PID checks every UI tick; use a fast socket probe for UI state.
             if (httpLocalSelected)
             {
                 double now = EditorApplication.timeSinceStartup;
                 if ((now - lastLocalServerRunningPollTime) > 0.75f || httpServerToggleInProgress)
                 {
                     lastLocalServerRunningPollTime = now;
-                    lastLocalServerRunning = MCPServiceLocator.Server.IsLocalHttpServerRunning();
+                    lastLocalServerRunning = MCPServiceLocator.Server.IsLocalHttpServerReachable();
                 }
                 localServerRunning = lastLocalServerRunning;
             }
@@ -506,9 +565,6 @@ namespace MCPForUnity.Editor.Windows.Components.Connection
             startHttpServerButton.tooltip = httpLocalSelected
                 ? (canStartLocalServer ? string.Empty : "HTTP Local requires a localhost URL (localhost/127.0.0.1/0.0.0.0/::1).")
                 : string.Empty;
-
-            // Stop button is no longer used; it may be null depending on UXML version.
-            stopHttpServerButton?.SetEnabled(false);
         }
 
         private void RefreshHttpUi()
@@ -531,7 +587,7 @@ namespace MCPForUnity.Editor.Windows.Components.Connection
             try
             {
                 // Check if a local server is running.
-                bool serverRunning = IsHttpLocalSelected() && MCPServiceLocator.Server.IsLocalHttpServerRunning();
+                bool serverRunning = IsHttpLocalSelected() && MCPServiceLocator.Server.IsLocalHttpServerReachable();
 
                 if (serverRunning)
                 {
@@ -591,7 +647,7 @@ namespace MCPForUnity.Editor.Windows.Components.Connection
                 var delay = attempt < 6 ? shortDelay : longDelay;
 
                 // Check if server is actually accepting connections
-                bool serverDetected = MCPServiceLocator.Server.IsLocalHttpServerRunning();
+                bool serverDetected = MCPServiceLocator.Server.IsLocalHttpServerReachable();
 
                 if (serverDetected)
                 {
@@ -610,7 +666,7 @@ namespace MCPForUnity.Editor.Windows.Components.Connection
                     // This handles cases where process detection fails but the server is actually running.
                     // Only try once every 3 attempts to avoid spamming connection errors (at attempts 20, 23, 26, 29).
                     if ((attempt - 20) % 3 != 0) continue;
-                    
+
                     bool started = await bridgeService.StartAsync();
                     if (started)
                     {
@@ -675,6 +731,12 @@ namespace MCPForUnity.Editor.Windows.Components.Connection
             {
                 if (bridgeService.IsRunning)
                 {
+                    // Clear any resume flags when user manually ends the session to prevent
+                    // getting stuck in "Resuming..." state (the flag may have been set by a
+                    // domain reload that started just before the user clicked End Session)
+                    try { EditorPrefs.DeleteKey(EditorPrefKeys.ResumeStdioAfterReload); } catch { }
+                    try { EditorPrefs.DeleteKey(EditorPrefKeys.ResumeHttpAfterReload); } catch { }
+
                     await bridgeService.StopAsync();
                 }
                 else
@@ -686,7 +748,13 @@ namespace MCPForUnity.Editor.Windows.Components.Connection
                     }
                     else
                     {
-                        McpLog.Warn("Failed to start MCP bridge");
+                        var mode = EditorConfigurationCache.Instance.UseHttpTransport
+                            ? TransportMode.Http : TransportMode.Stdio;
+                        var state = MCPServiceLocator.TransportManager.GetState(mode);
+                        string errorMsg = state?.Error
+                            ?? "Failed to start the MCP session. Check the server URL and that the server is running.";
+                        EditorUtility.DisplayDialog("Connection Failed", errorMsg, "OK");
+                        McpLog.Warn($"Failed to start MCP bridge: {errorMsg}");
                     }
                 }
             }
@@ -705,11 +773,6 @@ namespace MCPForUnity.Editor.Windows.Components.Connection
             }
         }
 
-        private async void OnTestConnectionClicked()
-        {
-            await VerifyBridgeConnectionAsync();
-        }
-
         private async Task EndOrphanedSessionAsync()
         {
             // Fire-and-forget cleanup of orphaned session when server is no longer running.
@@ -718,6 +781,11 @@ namespace MCPForUnity.Editor.Windows.Components.Connection
             {
                 connectionToggleInProgress = true;
                 connectionToggleButton?.SetEnabled(false);
+
+                // Clear resume flags to prevent getting stuck in "Resuming..." state
+                try { EditorPrefs.DeleteKey(EditorPrefKeys.ResumeStdioAfterReload); } catch { }
+                try { EditorPrefs.DeleteKey(EditorPrefKeys.ResumeHttpAfterReload); } catch { }
+
                 await MCPServiceLocator.Bridge.StopAsync();
             }
             catch (Exception ex)
@@ -730,6 +798,110 @@ namespace MCPForUnity.Editor.Windows.Components.Connection
                 connectionToggleButton?.SetEnabled(true);
                 UpdateConnectionStatus();
             }
+        }
+
+        private void PersistApiKeyFromField()
+        {
+            if (apiKeyField == null)
+            {
+                return;
+            }
+
+            string apiKey = apiKeyField.text?.Trim() ?? string.Empty;
+            string existingKey = EditorPrefs.GetString(EditorPrefKeys.ApiKey, string.Empty);
+
+            if (apiKey != existingKey)
+            {
+                EditorPrefs.SetString(EditorPrefKeys.ApiKey, apiKey);
+                OnManualConfigUpdateRequested?.Invoke();
+                UpdateConnectionStatus();
+                McpLog.Info(string.IsNullOrEmpty(apiKey) ? "API key cleared" : "API key updated");
+            }
+        }
+
+        private async void OnGetApiKeyClicked()
+        {
+            if (getApiKeyButton != null)
+            {
+                getApiKeyButton.SetEnabled(false);
+            }
+
+            try
+            {
+                string loginUrl = await GetLoginUrlAsync();
+                if (string.IsNullOrEmpty(loginUrl))
+                {
+                    EditorUtility.DisplayDialog("API Key",
+                        "API key management is not available for this server. Contact your server administrator.",
+                        "OK");
+                    return;
+                }
+                Application.OpenURL(loginUrl);
+            }
+            catch (Exception ex)
+            {
+                McpLog.Error($"Failed to get login URL: {ex.Message}");
+                EditorUtility.DisplayDialog("Error",
+                    $"Failed to get API key login URL:\n\n{ex.Message}",
+                    "OK");
+            }
+            finally
+            {
+                if (getApiKeyButton != null)
+                {
+                    getApiKeyButton.SetEnabled(true);
+                }
+            }
+        }
+
+        private async Task<string> GetLoginUrlAsync()
+        {
+            if (!string.IsNullOrEmpty(cachedLoginUrl))
+            {
+                return cachedLoginUrl;
+            }
+
+            string baseUrl = HttpEndpointUtility.GetBaseUrl();
+            string loginUrlEndpoint = $"{baseUrl.TrimEnd('/')}/api/auth/login-url";
+
+            try
+            {
+                using (var client = new System.Net.Http.HttpClient())
+                {
+                    client.Timeout = TimeSpan.FromSeconds(10);
+                    var response = await client.GetAsync(loginUrlEndpoint);
+
+                    if (response.IsSuccessStatusCode)
+                    {
+                        string json = await response.Content.ReadAsStringAsync();
+                        var result = Newtonsoft.Json.Linq.JObject.Parse(json);
+
+                        if (result.Value<bool>("success"))
+                        {
+                            cachedLoginUrl = result.Value<string>("login_url");
+                            return cachedLoginUrl;
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                McpLog.Debug($"Failed to fetch login URL from {loginUrlEndpoint}: {ex.Message}");
+            }
+
+            return null;
+        }
+
+        private void OnClearApiKeyClicked()
+        {
+            EditorPrefs.SetString(EditorPrefKeys.ApiKey, string.Empty);
+            if (apiKeyField != null)
+            {
+                apiKeyField.SetValueWithoutNotify(string.Empty);
+            }
+            OnManualConfigUpdateRequested?.Invoke();
+            UpdateConnectionStatus();
+            McpLog.Info("API key cleared");
         }
 
         public async Task VerifyBridgeConnectionAsync()
@@ -749,33 +921,26 @@ namespace MCPForUnity.Editor.Windows.Components.Connection
             var bridgeService = MCPServiceLocator.Bridge;
             if (!bridgeService.IsRunning)
             {
-                healthStatusLabel.text = HealthStatusUnknown;
-                healthIndicator.RemoveFromClassList("healthy");
-                healthIndicator.RemoveFromClassList("warning");
-                healthIndicator.AddToClassList("unknown");
-                
+                onHealthStatusUpdate?.Invoke(false, HealthStatus.Unknown);
+
                 // Only log if state changed
-                if (lastHealthStatus != HealthStatusUnknown)
+                if (lastHealthStatus != HealthStatus.Unknown)
                 {
                     McpLog.Warn("Cannot verify connection: Bridge is not running");
-                    lastHealthStatus = HealthStatusUnknown;
+                    lastHealthStatus = HealthStatus.Unknown;
                 }
                 return;
             }
 
             var result = await bridgeService.VerifyAsync();
 
-            healthIndicator.RemoveFromClassList("healthy");
-            healthIndicator.RemoveFromClassList("warning");
-            healthIndicator.RemoveFromClassList("unknown");
-
             string newStatus;
+            bool isHealthy;
             if (result.Success && result.PingSucceeded)
             {
-                newStatus = HealthStatusHealthy;
-                healthStatusLabel.text = newStatus;
-                healthIndicator.AddToClassList("healthy");
-                
+                newStatus = HealthStatus.Healthy;
+                isHealthy = true;
+
                 // Only log if state changed
                 if (lastHealthStatus != newStatus)
                 {
@@ -785,10 +950,9 @@ namespace MCPForUnity.Editor.Windows.Components.Connection
             }
             else if (result.HandshakeValid)
             {
-                newStatus = HealthStatusPingFailed;
-                healthStatusLabel.text = newStatus;
-                healthIndicator.AddToClassList("warning");
-                
+                newStatus = HealthStatus.PingFailed;
+                isHealthy = false;
+
                 // Log once per distinct warning state
                 if (lastHealthStatus != newStatus)
                 {
@@ -798,10 +962,9 @@ namespace MCPForUnity.Editor.Windows.Components.Connection
             }
             else
             {
-                newStatus = HealthStatusUnhealthy;
-                healthStatusLabel.text = newStatus;
-                healthIndicator.AddToClassList("warning");
-                
+                newStatus = HealthStatus.Unhealthy;
+                isHealthy = false;
+
                 // Log once per distinct error state
                 if (lastHealthStatus != newStatus)
                 {
@@ -809,6 +972,66 @@ namespace MCPForUnity.Editor.Windows.Components.Connection
                     lastHealthStatus = newStatus;
                 }
             }
+
+            onHealthStatusUpdate?.Invoke(isHealthy, newStatus);
+        }
+
+        /// <summary>
+        /// Updates the transport mismatch warning banner based on the client's configured transport.
+        /// Shows a warning if the client's transport doesn't match the server's current transport setting.
+        /// </summary>
+        /// <param name="clientName">The display name of the client being checked.</param>
+        /// <param name="clientTransport">The transport the client is configured to use.</param>
+        public void UpdateTransportMismatchWarning(string clientName, ConfiguredTransport clientTransport)
+        {
+            if (transportMismatchWarning == null || transportMismatchText == null)
+                return;
+
+            // If client transport is unknown, hide the warning (we can't determine mismatch)
+            if (clientTransport == ConfiguredTransport.Unknown)
+            {
+                transportMismatchWarning.RemoveFromClassList("visible");
+                return;
+            }
+
+            // Determine the server's current transport setting (3-way: Stdio, Http, HttpRemote)
+            ConfiguredTransport serverTransport = HttpEndpointUtility.GetCurrentServerTransport();
+
+            // Check for mismatch
+            bool hasMismatch = clientTransport != serverTransport;
+
+            if (hasMismatch)
+            {
+                string clientTransportName = TransportDisplayName(clientTransport);
+                string serverTransportName = TransportDisplayName(serverTransport);
+
+                transportMismatchText.text = $"⚠ {clientName} is configured for \"{clientTransportName}\" but server is set to \"{serverTransportName}\". " +
+                    "Click \"Configure\" in Client Configuration to update.";
+                transportMismatchWarning.AddToClassList("visible");
+            }
+            else
+            {
+                transportMismatchWarning.RemoveFromClassList("visible");
+            }
+        }
+
+        /// <summary>
+        /// Clears the transport mismatch warning banner.
+        /// </summary>
+        public void ClearTransportMismatchWarning()
+        {
+            transportMismatchWarning?.RemoveFromClassList("visible");
+        }
+
+        private static string TransportDisplayName(ConfiguredTransport transport)
+        {
+            return transport switch
+            {
+                ConfiguredTransport.Stdio => "stdio",
+                ConfiguredTransport.Http => "HTTP Local",
+                ConfiguredTransport.HttpRemote => "HTTP Remote",
+                _ => "unknown"
+            };
         }
     }
 }

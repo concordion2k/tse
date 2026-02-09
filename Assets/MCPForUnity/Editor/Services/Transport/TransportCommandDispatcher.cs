@@ -4,6 +4,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using MCPForUnity.Editor.Helpers;
 using MCPForUnity.Editor.Models;
+using MCPForUnity.Editor.Services;
 using MCPForUnity.Editor.Tools;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
@@ -35,6 +36,7 @@ namespace MCPForUnity.Editor.Services.Transport
                 CompletionSource = completionSource;
                 CancellationToken = cancellationToken;
                 CancellationRegistration = registration;
+                QueuedAt = DateTime.UtcNow;
             }
 
             public string CommandJson { get; }
@@ -42,6 +44,7 @@ namespace MCPForUnity.Editor.Services.Transport
             public CancellationToken CancellationToken { get; }
             public CancellationTokenRegistration CancellationRegistration { get; }
             public bool IsExecuting { get; set; }
+            public DateTime QueuedAt { get; }
 
             public void Dispose()
             {
@@ -229,6 +232,12 @@ namespace MCPForUnity.Editor.Services.Transport
 
             lock (PendingLock)
             {
+                // Early exit inside lock to prevent per-frame List allocations (GitHub issue #577)
+                if (Pending.Count == 0)
+                {
+                    return;
+                }
+
                 ready = new List<(string, PendingCommand)>(Pending.Count);
                 foreach (var kvp in Pending)
                 {
@@ -331,6 +340,27 @@ namespace MCPForUnity.Editor.Services.Transport
                 }
 
                 var parameters = command.@params ?? new JObject();
+
+                // Block execution of disabled resources
+                var resourceMeta = MCPServiceLocator.ResourceDiscovery.GetResourceMetadata(command.type);
+                if (resourceMeta != null && !MCPServiceLocator.ResourceDiscovery.IsResourceEnabled(command.type))
+                {
+                    pending.TrySetResult(SerializeError(
+                        $"Resource '{command.type}' is disabled in the Unity Editor."));
+                    RemovePending(id, pending);
+                    return;
+                }
+
+                // Block execution of disabled tools
+                var toolMeta = MCPServiceLocator.ToolDiscovery.GetToolMetadata(command.type);
+                if (toolMeta != null && !MCPServiceLocator.ToolDiscovery.IsToolEnabled(command.type))
+                {
+                    pending.TrySetResult(SerializeError(
+                        $"Tool '{command.type}' is disabled in the Unity Editor."));
+                    RemovePending(id, pending);
+                    return;
+                }
+
                 var result = CommandRegistry.ExecuteCommand(command.type, parameters, pending.CompletionSource);
 
                 if (result == null)
