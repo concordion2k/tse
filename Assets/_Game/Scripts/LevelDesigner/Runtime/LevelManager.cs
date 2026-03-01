@@ -56,6 +56,12 @@ namespace LevelDesigner
 
         private void Start()
         {
+            // When LevelProgressionManager is present it pushes LevelSettings and
+            // calls InitializeLevel() via OnSceneLoaded — skip self-initialization
+            // here to avoid double-init. The fallback supports standalone scene testing.
+            if (LevelProgressionManager.Instance != null)
+                return;
+
             if (levelSettings != null && !isInitialized)
             {
                 InitializeLevel();

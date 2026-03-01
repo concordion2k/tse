@@ -6,7 +6,7 @@ I plan to use `claude.code` to assist in my development efforts - both to accele
 
 Please feel free to raise a GitHub issue with ideas or thoughts on the prototype! Especially as it pertains to game optimization.
 
-Project currently uses Unity version `6000.3.2f1`
+Project currently uses Unity version `6000.3.9f1`
 
 ## Level Designer
 

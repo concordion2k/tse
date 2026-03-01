@@ -15,7 +15,7 @@ MonoBehaviour:
   levelName: Prototype Level
   description: 
   pathData: {fileID: 11400000, guid: 3e87b851be92a41e6adb9cf4a0b00b09, type: 2}
-  environmentType: 0
+  environmentType: 1
   skyboxMaterial: {fileID: 0}
   terrainPrefab: {fileID: 0}
   terrainHeightOffset: -50
@@ -25,7 +25,7 @@ MonoBehaviour:
   enemyPlacements:
   - enemyPrefab: {fileID: 1000000000000000001, guid: 1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d, type: 3}
     pathDistance: 40
-    offsetFromPath: {x: -5.118245, y: -6.542563, z: 0.9460435}
+    offsetFromPath: {x: -26.033007, y: 26.241652, z: 58.015865}
     scaleMultiplier: 1
     useFormation: 0
     formation: 0
@@ -33,9 +33,17 @@ MonoBehaviour:
     formationSpacing: 5
   - enemyPrefab: {fileID: 1000000000000000001, guid: 1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d, type: 3}
     pathDistance: 90
-    offsetFromPath: {x: 0.2666478, y: 11.172352, z: 0.66290087}
+    offsetFromPath: {x: 0.58415186, y: 24.392832, z: 33.457104}
     scaleMultiplier: 1
     useFormation: 0
+    formation: 0
+    formationCount: 3
+    formationSpacing: 5
+  - enemyPrefab: {fileID: 1000000000000000001, guid: 1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d, type: 3}
+    pathDistance: 140
+    offsetFromPath: {x: 7.7390985, y: -13.508892, z: -1.0980282}
+    scaleMultiplier: 1
+    useFormation: 1
     formation: 0
     formationCount: 3
     formationSpacing: 5
@@ -48,16 +56,24 @@ MonoBehaviour:
     formationCount: 3
     formationSpacing: 5
   - enemyPrefab: {fileID: 1000000000000000001, guid: 1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d, type: 3}
-    pathDistance: 230
-    offsetFromPath: {x: 29.73702, y: -0.19289018, z: 6.4690742}
+    pathDistance: 215
+    offsetFromPath: {x: -11.6940975, y: 1.9977947, z: 56.48235}
     scaleMultiplier: 1
     useFormation: 0
     formation: 0
     formationCount: 3
     formationSpacing: 5
+  - enemyPrefab: {fileID: 1000000000000000002, guid: 2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e, type: 3}
+    pathDistance: 230
+    offsetFromPath: {x: 4.125594, y: 60.069862, z: 133.69928}
+    scaleMultiplier: 4
+    useFormation: 1
+    formation: 3
+    formationCount: 4
+    formationSpacing: 5
   - enemyPrefab: {fileID: 1000000000000000001, guid: 1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d, type: 3}
     pathDistance: 355
-    offsetFromPath: {x: -19.110851, y: 1.5372825, z: -2.239631}
+    offsetFromPath: {x: -12.551624, y: -12.179155, z: 53.001766}
     scaleMultiplier: 1
     useFormation: 0
     formation: 0
@@ -70,5 +86,53 @@ MonoBehaviour:
     useFormation: 0
     formation: 0
     formationCount: 3
+    formationSpacing: 5
+  - enemyPrefab: {fileID: 1000000000000000001, guid: 1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d, type: 3}
+    pathDistance: 585
+    offsetFromPath: {x: -3.9463828, y: 1.8321917, z: 106.676476}
+    scaleMultiplier: 3
+    useFormation: 0
+    formation: 2
+    formationCount: 5
+    formationSpacing: 5
+  - enemyPrefab: {fileID: 1000000000000000001, guid: 1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d, type: 3}
+    pathDistance: 610
+    offsetFromPath: {x: -32.14486, y: -0.18575753, z: 27.17404}
+    scaleMultiplier: 1
+    useFormation: 0
+    formation: 0
+    formationCount: 3
+    formationSpacing: 5
+  - enemyPrefab: {fileID: 1000000000000000001, guid: 1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d, type: 3}
+    pathDistance: 820
+    offsetFromPath: {x: -17.689749, y: 0.000008735679, z: 2.4029045}
+    scaleMultiplier: 1
+    useFormation: 0
+    formation: 0
+    formationCount: 3
+    formationSpacing: 5
+  - enemyPrefab: {fileID: 1000000000000000003, guid: 3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f, type: 3}
+    pathDistance: 880
+    offsetFromPath: {x: 22.705656, y: 0.000019559076, z: 0.62298137}
+    scaleMultiplier: 3
+    useFormation: 1
+    formation: 3
+    formationCount: 6
+    formationSpacing: 5
+  - enemyPrefab: {fileID: 1000000000000000001, guid: 1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d, type: 3}
+    pathDistance: 925
+    offsetFromPath: {x: 26.310663, y: -31.551088, z: 15.484067}
+    scaleMultiplier: 4
+    useFormation: 1
+    formation: 1
+    formationCount: 3
+    formationSpacing: 5
+  - enemyPrefab: {fileID: 1000000000000000001, guid: 1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d, type: 3}
+    pathDistance: 930
+    offsetFromPath: {x: -17.890947, y: 0.00002168682, z: 5.401306}
+    scaleMultiplier: 5
+    useFormation: 1
+    formation: 3
+    formationCount: 7
     formationSpacing: 5
   musicTrack: {fileID: 0}

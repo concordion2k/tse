@@ -31,21 +31,15 @@ public class TitleScreenController : MonoBehaviour
 
     void OnPlayClicked()
     {
-        // Stop menu music
         if (AudioManager.Instance != null)
-        {
             AudioManager.Instance.StopMusic();
-        }
 
-        // Load gameplay scene
-        if (SceneTransitionManager.Instance != null)
-        {
-            SceneTransitionManager.Instance.LoadScene("GameplayScene");
-        }
+        if (LevelProgressionManager.Instance != null)
+            LevelProgressionManager.Instance.StartCurrentLevel();
+        else if (SceneTransitionManager.Instance != null)
+            SceneTransitionManager.Instance.LoadScene("level1");
         else
-        {
-            SceneManager.LoadScene("GameplayScene");
-        }
+            SceneManager.LoadScene("level1");
     }
 
     void OnSettingsClicked()

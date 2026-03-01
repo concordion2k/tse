@@ -57,6 +57,14 @@ namespace LevelDesigner
         [Tooltip("Background music track for this level")]
         public AudioClip musicTrack;
 
+        [Header("Level Triggers")]
+        [Tooltip("Gameplay triggers that fire at specific points during the level (sorted by path distance)")]
+        public List<GameplayTrigger> levelTriggers = new List<GameplayTrigger>();
+
+        [Header("Completion Events")]
+        [Tooltip("Events that fire when this level is completed (path end reached)")]
+        public List<LevelEvent> completionEvents = new List<LevelEvent>();
+
         public bool IsValid => pathData != null && pathData.IsValid;
 
         public void AddEnemyPlacement(EnemyPlacementData placement)
@@ -85,6 +93,11 @@ namespace LevelDesigner
             }
         }
 
+        public void SortTriggers()
+        {
+            levelTriggers?.Sort((a, b) => a.pathDistance.CompareTo(b.pathDistance));
+        }
+
         public void ClearEnemyPlacements()
         {
             enemyPlacements?.Clear();
@@ -94,6 +107,7 @@ namespace LevelDesigner
         private void OnValidate()
         {
             SortEnemyPlacements();
+            SortTriggers();
         }
 #endif
     }

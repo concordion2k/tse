@@ -197,7 +197,7 @@ namespace LevelDesigner
                     {
                         int side = (i % 2 == 1) ? 1 : -1;
                         int row = (i + 1) / 2;
-                        offsets.Add(new Vector3(side * row * spacing, 0f, -row * spacing));
+                        offsets.Add(new Vector3(side * row * spacing, -row * spacing, 0f));
                     }
                     break;
 
@@ -205,13 +205,13 @@ namespace LevelDesigner
                     offsets.Add(Vector3.zero); // Center
                     if (count > 1) offsets.Add(new Vector3(spacing, 0f, 0f));
                     if (count > 2) offsets.Add(new Vector3(-spacing, 0f, 0f));
-                    if (count > 3) offsets.Add(new Vector3(0f, 0f, spacing));
-                    if (count > 4) offsets.Add(new Vector3(0f, 0f, -spacing));
+                    if (count > 3) offsets.Add(new Vector3(0f, spacing, 0f));
+                    if (count > 4) offsets.Add(new Vector3(0f, -spacing, 0f));
                     // Add more in expanding pattern
                     for (int i = 5; i < count; i++)
                     {
                         float angle = (i - 5) * (360f / (count - 4)) * Mathf.Deg2Rad;
-                        offsets.Add(new Vector3(Mathf.Cos(angle) * spacing * 2f, 0f, Mathf.Sin(angle) * spacing * 2f));
+                        offsets.Add(new Vector3(Mathf.Cos(angle) * spacing * 2f, Mathf.Sin(angle) * spacing * 2f, 0f));
                     }
                     break;
 
@@ -219,7 +219,7 @@ namespace LevelDesigner
                     for (int i = 0; i < count; i++)
                     {
                         float angle = i * (360f / count) * Mathf.Deg2Rad;
-                        offsets.Add(new Vector3(Mathf.Cos(angle) * spacing, 0f, Mathf.Sin(angle) * spacing));
+                        offsets.Add(new Vector3(Mathf.Cos(angle) * spacing, Mathf.Sin(angle) * spacing, 0f));
                     }
                     break;
 
