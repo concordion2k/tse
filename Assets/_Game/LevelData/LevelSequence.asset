@@ -12,4 +12,5 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8392ec3ac840b4012877f714058cb0d3, type: 3}
   m_Name: LevelSequence
   m_EditorClassIdentifier: Assembly-CSharp::LevelDesigner.LevelSequence
-  levels: []
+  levels:
+  - {fileID: 11400000, guid: 1d6131843633f435285003db21e89e5b, type: 2}
