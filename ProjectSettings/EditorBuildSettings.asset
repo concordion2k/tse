@@ -12,7 +12,7 @@ EditorBuildSettings:
     path: Assets/_Game/Scenes/TitleScreen.unity
     guid: 350e23e7cdc9f4126b6124570918c139
   - enabled: 1
-    path: Assets/_Game/Scenes/GameplayScene.unity
+    path: Assets/_Game/Scenes/level1.unity
     guid: 5b24096e3618a4900877ee38aee3974f
   m_configObjects:
     com.unity.dt.app-ui: {fileID: 11400000, guid: 1b1c20d82303e4b5781c3ef50ac1449f, type: 2}

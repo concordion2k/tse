@@ -23,6 +23,8 @@ namespace LevelDesignerEditor
         private SerializedProperty fogColorProp;
         private SerializedProperty enemyPlacementsProp;
         private SerializedProperty musicTrackProp;
+        private SerializedProperty levelTriggersProp;
+        private SerializedProperty completionEventsProp;
 
         private void OnEnable()
         {
@@ -40,6 +42,8 @@ namespace LevelDesignerEditor
             fogColorProp = serializedObject.FindProperty("fogColor");
             enemyPlacementsProp = serializedObject.FindProperty("enemyPlacements");
             musicTrackProp = serializedObject.FindProperty("musicTrack");
+            levelTriggersProp = serializedObject.FindProperty("levelTriggers");
+            completionEventsProp = serializedObject.FindProperty("completionEvents");
         }
 
         public override void OnInspectorGUI()
@@ -63,6 +67,9 @@ namespace LevelDesignerEditor
 
             EditorGUILayout.Space(10);
             DrawAudioSection();
+
+            EditorGUILayout.Space(10);
+            DrawEventsSection();
 
             EditorGUILayout.Space(10);
             DrawActions();
@@ -251,6 +258,27 @@ namespace LevelDesignerEditor
             EditorGUI.indentLevel++;
 
             EditorGUILayout.PropertyField(musicTrackProp);
+
+            EditorGUI.indentLevel--;
+        }
+
+        private void DrawEventsSection()
+        {
+            EditorGUILayout.LabelField("Level Events", EditorStyles.boldLabel);
+            EditorGUI.indentLevel++;
+
+            EditorGUILayout.PropertyField(levelTriggersProp, new GUIContent("Gameplay Triggers"), true);
+
+            EditorGUILayout.Space(4);
+
+            if (levelTriggersProp.arraySize > 0 && GUILayout.Button("Sort Triggers by Distance"))
+            {
+                settings.SortTriggers();
+                EditorUtility.SetDirty(settings);
+            }
+
+            EditorGUILayout.Space(4);
+            EditorGUILayout.PropertyField(completionEventsProp, new GUIContent("Completion Events"), true);
 
             EditorGUI.indentLevel--;
         }
